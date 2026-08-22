@@ -34,14 +34,14 @@ echo [2/5] 备份 hosts 文件
 if not exist "%APP%\hosts.backup" copy /y "%WINDIR%\System32\drivers\etc\hosts" "%APP%\hosts.backup" >nul
 
 echo [3/5] 注册计划任务(每分钟检�?最高权�?
-schtasks /Create /F /TN "AwayFromShorts" /TR "powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"%APP%\src\awayfromshorts.ps1\"" /SC MINUTE /MO 1 /RL HIGHEST >nul
+schtasks /Create /F /TN "AwayFromShorts" /TR "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"%APP%\src\awayfromshorts.ps1\"" /SC MINUTE /MO 1 /RL HIGHEST >nul
 if %errorlevel% neq 0 (
   echo [错误] 计划任务注册失败
   pause
   exit /b 1
 )
 
-echo [4/5] 立即执行一次屏蔽检�?powershell -NoProfile -ExecutionPolicy Bypass -File "%APP%\src\awayfromshorts.ps1"
+echo [4/5] 立即执行一次屏蔽检�?powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%APP%\src\awayfromshorts.ps1"
 
 echo [5/5] 启动可视化配置面�?start "" powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%APP%\src\webui.ps1"
 timeout /t 1 /nobreak >nul
