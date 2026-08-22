@@ -18,17 +18,23 @@
 | 🖥 可视化面板 | 本地网页 (127.0.0.1) 配置一切,改完最长 1 分钟生效 |
 | 🧹 一键卸载 | 删除计划任务、恢复 hosts、清理文件,不留痕迹 |
 
-## 🚀 懒人包一键安装(推荐)
+## 🚀 一键安装(推荐)
 
-在 PowerShell 里复制粘贴这一行,回车:
+**最简单: 下载单文件 EXE,双击,点一下 UAC「是」,完事。** 不需要解压、不需要命令行:
+
+- 到 [Releases](https://github.com/sdgfdii/AwayFromShorts/releases) 下载 `AwayFromShorts-Setup-1.0.1.exe`
+- 双击运行 → 弹 UAC 请求管理员权限 → 自动: 解压内置包 → 安装到 `%LOCALAPPDATA%\AwayFromShorts` → 备份 hosts → 注册计划任务(每分钟,最高权限)→ 立即执行一次 → 打开配置面板
+- 完成弹窗提示安装成功,浏览器自动打开 **http://127.0.0.1:8737**
+
+**或者用 PowerShell 一行安装(懒人包):**
 
 ```powershell
 irm https://raw.githubusercontent.com/sdgfdii/AwayFromShorts/main/install.ps1 | iex
 ```
 
-脚本会自动下载懒人包 → 解压 → 弹 UAC 请求管理员权限 → 注册计划任务 → 打开配置面板。
+脚本会自动下载最新懒人包 → 解压 → 弹 UAC 请求管理员权限 → 注册计划任务 → 打开配置面板。
 
-> 或者手动方式: 在 [Releases](https://github.com/sdgfdii/AwayFromShorts/releases) 下载 `AwayFromShorts-vX.Y.Z-win64.zip`,解压后**右键 `install.bat` → 以管理员身份运行**。
+> 手动方式: 在 [Releases](https://github.com/sdgfdii/AwayFromShorts/releases) 下载 `AwayFromShorts-vX.Y.Z-win64.zip`,解压后**右键 `install.bat` → 以管理员身份运行**。
 
 ## 🖥 使用
 
@@ -83,7 +89,9 @@ AwayFromShorts/
 ├── start-web.bat          # 打开配置面板
 ├── install.ps1            # GitHub 懒人包引导(irm | iex)
 ├── scripts/
-│   └── build-release.ps1  # 打包发布 ZIP
+│   ├── build-release.ps1  # 打包发布 ZIP
+│   ├── build-setup.ps1    # 生成单文件 EXE 安装器(内嵌 zip)
+│   └── release.ps1        # 打包 → 提交 → 打 tag → 发布 Release
 └── src/
     ├── core.ps1           # 核心函数: 配置/计划/hosts/进程
     ├── awayfromshorts.ps1 # 屏蔽引擎(计划任务每分钟跑)
