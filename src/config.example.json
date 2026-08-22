@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "enabled": true,
+  "schedule": {
+    "days": [1, 2, 3, 4, 5],
+    "windows": [
+      { "start": "19:00", "end": "22:00" }
+    ]
+  },
+  "blockWebsites": true,
+  "blockedSites": [
+    "youtube.com",
+    "www.youtube.com",
+    "m.youtube.com",
+    "youtu.be",
+    "youtube-nocookie.com",
+    "tiktok.com",
+    "www.tiktok.com",
+    "vm.tiktok.com",
+    "douyin.com",
+    "www.douyin.com",
+    "v.douyin.com"
+  ],
+  "blockedProcesses": [
+    "chrome",
+    "msedge"
+  ],
+  "whitelist": {
+    "sites": [],
+    "processes": []
+  },
+  "override": {
+    "mode": "none",
+    "until": null
+  },
+  "web": {
+    "port": 8737
+  }
+}

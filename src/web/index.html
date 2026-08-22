@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AwayFromShorts · 配置面板</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --panel: #171a23;
+    --panel2: #1e2230;
+    --border: #2a2f3e;
+    --text: #e6e9f0;
+    --muted: #8b93a7;
+    --accent: #4f8cff;
+    --accent2: #2f6fe0;
+    --green: #34c77b;
+    --red: #ff5d5d;
+    --orange: #ffab3d;
+    --radius: 12px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+    font-size: 14px; line-height: 1.6;
+  }
+  .app { display: flex; min-height: 100vh; }
+
+  /* ---------- 侧边栏 ---------- */
+  .sidebar {
+    width: 190px; background: var(--panel); border-right: 1px solid var(--border);
+    padding: 18px 10px; flex-shrink: 0;
+  }
+  .brand { display: flex; align-items: center; gap: 9px; padding: 4px 10px 16px; }
+  .brand .logo {
+    width: 30px; height: 30px; border-radius: 9px; flex-shrink: 0;
+    background: linear-gradient(135deg, var(--accent), #7b5cff);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 15px; font-weight: 700; color: #fff;
+  }
+  .brand .name { font-weight: 700; font-size: 15px; }
+  .brand .ver { font-size: 11px; color: var(--muted); }
+  .nav-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 12px; margin: 2px 0; border-radius: 9px;
+    color: var(--muted); cursor: pointer; user-select: none;
+    border: 1px solid transparent;
+  }
+  .nav-item:hover { background: var(--panel2); color: var(--text); }
+  .nav-item.active { background: var(--panel2); color: var(--accent); border-color: var(--border); font-weight: 600; }
+  .nav-item .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; opacity: .7; }
+
+  /* ---------- 主区 ---------- */
+  .main { flex: 1; padding: 26px 32px 60px; max-width: 960px; }
+  .topbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 22px; gap: 12px; flex-wrap: wrap; }
+  .topbar h1 { font-size: 21px; font-weight: 700; }
+  .topbar .right { display: flex; align-items: center; gap: 10px; }
+  .pill {
+    padding: 4px 13px; border-radius: 999px; font-size: 12.5px; font-weight: 600;
+    border: 1px solid var(--border); background: var(--panel2); color: var(--muted);
+  }
+  .pill.on { color: var(--green); border-color: rgba(52,199,123,.4); background: rgba(52,199,123,.12); }
+  .pill.off { color: var(--muted); }
+  .pill.err { color: var(--red); border-color: rgba(255,93,93,.4); background: rgba(255,93,93,.1); }
+
+  .btn {
+    border: 1px solid var(--border); background: var(--panel2); color: var(--text);
+    padding: 7px 15px; border-radius: 9px; cursor: pointer; font-size: 13px;
+    transition: all .15s; white-space: nowrap;
+  }
+  .btn:hover { border-color: var(--accent); }
+  .btn.primary { background: var(--accent2); border-color: var(--accent2); color: #fff; font-weight: 600; }
+  .btn.primary:hover { filter: brightness(1.12); }
+  .btn.green { background: rgba(52,199,123,.15); border-color: rgba(52,199,123,.45); color: var(--green); }
+  .btn.red { background: rgba(255,93,93,.12); border-color: rgba(255,93,93,.4); color: var(--red); }
+  .btn.small { padding: 3px 9px; font-size: 12px; border-radius: 7px; }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+
+  .panel { display: none; }
+  .panel.active { display: block; animation: fade .18s ease; }
+  @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; } }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 18px 20px; margin-bottom: 16px;
+  }
+  .card h3 { font-size: 15px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+  .card .hint { color: var(--muted); font-size: 12.5px; margin-bottom: 12px; }
+
+  .status-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .status-cell { background: var(--panel2); border: 1px solid var(--border); border-radius: 10px; padding: 13px 15px; }
+  .status-cell .k { color: var(--muted); font-size: 12px; }
+  .status-cell .v { font-size: 14.5px; font-weight: 600; margin-top: 3px; word-break: break-all; }
+  .status-cell .v.green { color: var(--green); }
+  .status-cell .v.red { color: var(--red); }
+  .status-cell .v.orange { color: var(--orange); }
+  .status-cell.wide { grid-column: 1 / -1; }
+
+  .switch-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 0; }
+  .switch-row .lbl { display: flex; align-items: center; gap: 9px; }
+  .switch { position: relative; width: 42px; height: 23px; flex-shrink: 0; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .slider {
+    position: absolute; inset: 0; border-radius: 999px; cursor: pointer;
+    background: #3a4050; transition: .2s;
+  }
+  .slider::before {
+    content: ""; position: absolute; width: 17px; height: 17px; left: 3px; top: 3px;
+    border-radius: 50%; background: #fff; transition: .2s;
+  }
+  .switch input:checked + .slider { background: var(--accent); }
+  .switch input:checked + .slider::before { transform: translateX(19px); }
+
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; }
+  .chip {
+    padding: 6px 14px; border-radius: 999px; cursor: pointer; user-select: none;
+    border: 1px solid var(--border); background: var(--panel2); color: var(--muted); font-size: 13px;
+  }
+  .chip.on { background: var(--accent2); border-color: var(--accent2); color: #fff; font-weight: 600; }
+
+  .window-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .window-row input[type="time"] {
+    background: var(--panel2); border: 1px solid var(--border); color: var(--text);
+    border-radius: 8px; padding: 7px 10px; font-size: 13.5px;
+  }
+  .window-row input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(.7); }
+  .sep { color: var(--muted); }
+
+  .preset-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 9px; }
+  .preset {
+    background: var(--panel2); border: 1px solid var(--border); border-radius: 10px;
+    padding: 11px 13px; cursor: pointer; transition: all .15s;
+    display: flex; align-items: flex-start; gap: 10px;
+  }
+  .preset:hover { border-color: var(--accent); }
+  .preset.checked { border-color: var(--accent); background: rgba(79,140,255,.09); }
+  .preset .t { font-weight: 600; font-size: 13.5px; }
+  .preset .d { color: var(--muted); font-size: 11.5px; margin-top: 2px; word-break: break-all; }
+  .preset input { margin-top: 4px; accent-color: var(--accent); }
+
+  .add-row { display: flex; gap: 8px; margin-top: 12px; }
+  .add-row input {
+    flex: 1; background: var(--panel2); border: 1px solid var(--border); color: var(--text);
+    border-radius: 8px; padding: 8px 11px; font-size: 13px; outline: none;
+  }
+  .add-row input:focus { border-color: var(--accent); }
+
+  .list { margin-top: 10px; }
+  .list-item {
+    display: flex; align-items: center; justify-content: space-between;
+    background: var(--panel2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 7px 12px; margin-bottom: 6px; font-size: 13px;
+  }
+  .list-item code { font-family: Consolas, monospace; color: #a8c7ff; }
+
+  .note {
+    background: rgba(79,140,255,.08); border: 1px solid rgba(79,140,255,.25);
+    border-radius: 9px; padding: 10px 13px; font-size: 12.5px; color: #b9c8e8; margin-top: 12px;
+  }
+  .note.warn { background: rgba(255,171,61,.08); border-color: rgba(255,171,61,.3); color: #e8d2ac; }
+  .note.danger { background: rgba(255,93,93,.08); border-color: rgba(255,93,93,.3); color: #e8b9b9; }
+
+  details.tip { margin-top: 12px; }
+  details.tip summary { cursor: pointer; color: var(--accent); font-size: 13px; margin-bottom: 6px; }
+  details.tip .inner { color: var(--muted); font-size: 12.5px; padding-left: 4px; }
+  details.tip .inner li { margin: 4px 0 4px 18px; }
+
+  .toast {
+    position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%) translateY(80px);
+    background: var(--panel2); border: 1px solid var(--accent); color: var(--text);
+    padding: 10px 20px; border-radius: 10px; font-size: 13px; z-index: 99;
+    opacity: 0; transition: all .25s; box-shadow: 0 8px 30px rgba(0,0,0,.5);
+    max-width: 80vw;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+  .toast.err { border-color: var(--red); }
+  .toast.ok { border-color: var(--green); }
+
+  .btn-row { display: flex; gap: 9px; flex-wrap: wrap; margin-top: 14px; }
+  a { color: var(--accent); }
+  @media (max-width: 780px) {
+    .app { flex-direction: column; }
+    .sidebar { width: 100%; border-right: none; border-bottom: 1px solid var(--border); display: flex; overflow-x: auto; padding: 10px; }
+    .brand { display: none; }
+    .nav-item { white-space: nowrap; }
+    .status-grid { grid-template-columns: 1fr; }
+    .main { padding: 18px 14px 60px; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="logo">A</div>
+      <div>
+        <div class="name">AwayFromShorts</div>
+        <div class="ver">v<span id="verTag">-</span></div>
+      </div>
+    </div>
+    <div class="nav-item active" data-tab="status"><span class="dot"></span>状态</div>
+    <div class="nav-item" data-tab="schedule"><span class="dot"></span>屏蔽计划</div>
+    <div class="nav-item" data-tab="sites"><span class="dot"></span>网站屏蔽</div>
+    <div class="nav-item" data-tab="processes"><span class="dot"></span>进程屏蔽</div>
+    <div class="nav-item" data-tab="whitelist"><span class="dot"></span>白名单</div>
+    <div class="nav-item" data-tab="about"><span class="dot"></span>关于 / 卸载</div>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <h1 id="panelTitle">状态</h1>
+      <div class="right">
+        <span class="pill" id="topPill">加载中…</span>
+        <button class="btn primary" id="saveBtn">💾 保存更改</button>
+      </div>
+    </div>
+
+    <!-- ============ 状态 ============ -->
+    <section class="panel active" id="panel-status">
+      <div class="card">
+        <div class="switch-row">
+          <div class="lbl">
+            <label class="switch"><input type="checkbox" id="enabledSwitch"><span class="slider"></span></label>
+            <b>总开关</b> <span class="hint" style="margin:0">关闭后不屏蔽任何网站/进程</span>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>当前状态</h3>
+        <div class="status-grid">
+          <div class="status-cell wide">
+            <div class="k">屏蔽状态</div>
+            <div class="v" id="stActive">-</div>
+          </div>
+          <div class="status-cell">
+            <div class="k">网站屏蔽 (hosts)</div>
+            <div class="v" id="stHosts">-</div>
+          </div>
+          <div class="status-cell">
+            <div class="k">计划任务</div>
+            <div class="v" id="stTask">-</div>
+          </div>
+          <div class="status-cell">
+            <div class="k">面板权限</div>
+            <div class="v" id="stAdmin">-</div>
+          </div>
+          <div class="status-cell">
+            <div class="k">下一次屏蔽开始</div>
+            <div class="v" id="stNext">-</div>
+          </div>
+          <div class="status-cell">
+            <div class="k">上次引擎检查</div>
+            <div class="v" id="stLast">-</div>
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn green" id="applyBtn">⚡ 立即应用</button>
+          <button class="btn" id="blockNowBtn">🚫 临时屏蔽 30 分钟</button>
+          <button class="btn" id="unblockBtn">✅ 临时解除 30 分钟</button>
+          <button class="btn small" id="clearOverrideBtn">清除临时设置</button>
+        </div>
+        <div class="note">保存或点击「立即应用」后,屏蔽引擎(计划任务)最长 1 分钟内生效。临时屏蔽/解除会覆盖计划,到期自动恢复。</div>
+      </div>
+    </section>
+
+    <!-- ============ 计划 ============ -->
+    <section class="panel" id="panel-schedule">
+      <div class="card">
+        <h3>📅 屏蔽日期</h3>
+        <div class="chips" id="dayChips"></div>
+        <div class="note">选择每周哪些天执行屏蔽。时间支持跨午夜,例如 23:00 → 01:00。</div>
+      </div>
+      <div class="card">
+        <h3>⏰ 屏蔽时间段</h3>
+        <div id="windowRows"></div>
+        <button class="btn small" id="addWindowBtn">＋ 添加时间段</button>
+      </div>
+    </section>
+
+    <!-- ============ 网站 ============ -->
+    <section class="panel" id="panel-sites">
+      <div class="card">
+        <div class="switch-row">
+          <div class="lbl">
+            <label class="switch"><input type="checkbox" id="webSwitch"><span class="slider"></span></label>
+            <b>屏蔽网站</b>
+          </div>
+        </div>
+        <div class="hint">勾选常用网站预设,或添加自定义域名。屏蔽期间这些域名将无法访问(整站屏蔽,不能只屏蔽某个频道的短视频)。</div>
+      </div>
+      <div class="card">
+        <h3>常用网站</h3>
+        <div class="preset-grid" id="sitePresets"></div>
+      </div>
+      <div class="card">
+        <h3>自定义域名</h3>
+        <div class="add-row">
+          <input id="siteInput" placeholder="例如: example.com" spellcheck="false">
+          <button class="btn" id="addSiteBtn">添加</button>
+        </div>
+        <div class="list" id="siteList"></div>
+      </div>
+    </section>
+
+    <!-- ============ 进程 ============ -->
+    <section class="panel" id="panel-processes">
+      <div class="card">
+        <div class="hint">屏蔽期间,匹配的进程会被强制结束(每 1 分钟检查一次,反复打开的也会被杀掉)。进程名不区分大小写,可不写 .exe,支持 <code>*</code> 通配符。</div>
+      </div>
+      <div class="card">
+        <h3>常用程序</h3>
+        <div class="preset-grid" id="procPresets"></div>
+      </div>
+      <div class="card">
+        <h3>自定义进程</h3>
+        <div class="add-row">
+          <input id="procInput" placeholder="例如: steam" spellcheck="false">
+          <button class="btn" id="addProcBtn">添加</button>
+        </div>
+        <div class="list" id="procList"></div>
+      </div>
+    </section>
+
+    <!-- ============ 白名单 ============ -->
+    <section class="panel" id="panel-whitelist">
+      <div class="card">
+        <h3>🛡 白名单域名</h3>
+        <div class="hint">即使出现在屏蔽列表里,这些域名也永远放行(白名单优先)。</div>
+        <div class="add-row">
+          <input id="wlSiteInput" placeholder="例如: mail.example.com" spellcheck="false">
+          <button class="btn" id="addWlSiteBtn">添加</button>
+        </div>
+        <div class="list" id="wlSiteList"></div>
+      </div>
+      <div class="card">
+        <h3>🛡 白名单进程</h3>
+        <div class="hint">即使出现在屏蔽列表里,这些进程也永远不会被结束(支持通配符)。</div>
+        <div class="add-row">
+          <input id="wlProcInput" placeholder="例如: Teams" spellcheck="false">
+          <button class="btn" id="addWlProcBtn">添加</button>
+        </div>
+        <div class="list" id="wlProcList"></div>
+      </div>
+    </section>
+
+    <!-- ============ 关于 ============ -->
+    <section class="panel" id="panel-about">
+      <div class="card">
+        <h3>ℹ️ 关于 AwayFromShorts</h3>
+        <div class="status-grid">
+          <div class="status-cell"><div class="k">版本</div><div class="v" id="aboutVer">-</div></div>
+          <div class="status-cell"><div class="k">开源仓库</div><div class="v"><a href="https://github.com/sdgfdii/AwayFromShorts" target="_blank">github.com/sdgfdii/AwayFromShorts</a></div></div>
+          <div class="status-cell"><div class="k">程序目录</div><div class="v">%LOCALAPPDATA%\AwayFromShorts</div></div>
+          <div class="status-cell"><div class="k">配置面板端口</div><div class="v" id="aboutPort">-</div></div>
+        </div>
+        <details class="tip">
+          <summary>工作原理(点击展开)</summary>
+          <div class="inner">
+            <ul>
+              <li>网站屏蔽: 屏蔽期间向 hosts 文件写入 <code>0.0.0.0 域名</code> 记录,浏览器无法解析这些域名;解除时自动清除,只删除本程序写入的行,不动你的其他配置。</li>
+              <li>进程屏蔽: 强制结束匹配的进程,每分钟复查一次。</li>
+              <li>计划任务: 安装时注册 "AwayFromShorts" 任务,每分钟运行一次屏蔽引擎(需要管理员权限写 hosts)。</li>
+              <li>本配置面板只是本地网页(127.0.0.1),不会联网发送任何数据。</li>
+            </ul>
+          </div>
+        </details>
+      </div>
+      <div class="card">
+        <h3>🗑 卸载</h3>
+        <div class="note danger">卸载会删除计划任务、恢复 hosts 文件(仅移除本程序写入的行)、删除程序目录。你的其他文件不受影响。</div>
+        <div class="btn-row">
+          <button class="btn red" id="uninstallBtn">一键卸载 AwayFromShorts</button>
+        </div>
+        <div class="note">也可以手动运行 <code>%LOCALAPPDATA%\AwayFromShorts\uninstall.bat</code>(需管理员)。</div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+/* ================= 状态 ================= */
+let cfg = null;
+let status = null;
+let dirty = false;
+
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+async function api(path, method = "GET", body) {
+  const opt = { method, headers: {} };
+  if (body !== undefined) { opt.headers["Content-Type"] = "application/json"; opt.body = JSON.stringify(body); }
+  const r = await fetch(path, opt);
+  let j = null;
+  try { j = await r.json(); } catch (e) {}
+  if (!r.ok || (j && j.ok === false)) throw new Error((j && j.error) || ("HTTP " + r.status));
+  return j;
+}
+
+let toastTimer = null;
+function toast(msg, kind = "") {
+  const t = $("#toast");
+  t.textContent = msg;
+  t.className = "toast show " + kind;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.className = "toast"; }, 2600);
+}
+
+/* ================= 预设数据 ================= */
+const SITE_PRESETS = [
+  { label: "抖音", domains: ["douyin.com","www.douyin.com","v.douyin.com","live.douyin.com"] },
+  { label: "TikTok", domains: ["tiktok.com","www.tiktok.com","m.tiktok.com","vm.tiktok.com"] },
+  { label: "YouTube", domains: ["youtube.com","www.youtube.com","m.youtube.com","youtu.be","youtube-nocookie.com"] },
+  { label: "哔哩哔哩", domains: ["bilibili.com","www.bilibili.com","m.bilibili.com","b23.tv"] },
+  { label: "快手", domains: ["kuaishou.com","www.kuaishou.com","gifshow.com"] },
+  { label: "小红书", domains: ["xiaohongshu.com","www.xiaohongshu.com"] },
+  { label: "微博", domains: ["weibo.com","www.weibo.com","m.weibo.cn","t.cn"] },
+  { label: "Instagram", domains: ["instagram.com","www.instagram.com"] },
+  { label: "Snapchat", domains: ["snapchat.com","www.snapchat.com"] },
+  { label: "Pinterest", domains: ["pinterest.com","www.pinterest.com"] },
+  { label: "Reddit", domains: ["reddit.com","www.reddit.com","old.reddit.com"] },
+  { label: "知乎", domains: ["zhihu.com","www.zhihu.com"] },
+];
+const PROC_PRESETS = [
+  { label: "Chrome", names: ["chrome"] },
+  { label: "Edge", names: ["msedge"] },
+  { label: "Firefox", names: ["firefox"] },
+  { label: "微信", names: ["WeChat","Weixin"] },
+  { label: "QQ", names: ["QQ","TIM"] },
+  { label: "Steam", names: ["steam","steamwebhelper"] },
+  { label: "Discord", names: ["discord"] },
+  { label: "Slack", names: ["slack"] },
+  { label: "网易云音乐", names: ["cloudmusic"] },
+  { label: "抖音桌面版", names: ["douyin"] },
+];
+const DAY_LABELS = ["一","二","三","四","五","六","日"];
+
+/* ================= 加载 ================= */
+async function load() {
+  try {
+    const [c, s] = await Promise.all([api("/api/config"), api("/api/status")]);
+    cfg = c.config;
+    status = s;
+    $("#verTag").textContent = s.version;
+    $("#aboutVer").textContent = "v" + s.version;
+    $("#aboutPort").textContent = (c.config.web && c.config.web.port) || 8737;
+    dirty = false;
+    renderAll();
+  } catch (e) {
+    toast("加载失败: " + e.message, "err");
+  }
+}
+
+/* ================= 渲染 ================= */
+function renderAll() {
+  renderTop();
+  renderStatus();
+  renderSchedule();
+  renderSites();
+  renderProcesses();
+  renderWhitelist();
+}
+
+function renderTop() {
+  const s = status;
+  const pill = $("#topPill");
+  if (s.active) { pill.textContent = "🟢 屏蔽中"; pill.className = "pill on"; }
+  else if (s.enabled) { pill.textContent = "⚪ 未屏蔽"; pill.className = "pill off"; }
+  else { pill.textContent = "⛔ 已停用"; pill.className = "pill err"; }
+}
+
+const REASON_TEXT = {
+  schedule: "计划时段内",
+  "override-block": "临时屏蔽中",
+  "override-off": "临时解除中",
+  disabled: "总开关已关闭",
+  day: "今天不在计划日期",
+  time: "不在计划时段",
+};
+
+function renderStatus() {
+  $("#enabledSwitch").checked = !!cfg.enabled;
+  const act = $("#stActive");
+  if (status.active) { act.textContent = "🚫 屏蔽中(" + (REASON_TEXT[status.activeReason] || status.activeReason) + ")"; act.className = "v red"; }
+  else { act.textContent = "✅ 未屏蔽(" + (REASON_TEXT[status.activeReason] || status.activeReason) + ")"; act.className = "v green"; }
+
+  const h = $("#stHosts");
+  if (status.hosts === "blocked") { h.textContent = "已写入屏蔽规则"; h.className = "v red"; }
+  else if (status.hosts === "clean") { h.textContent = "干净(未屏蔽)"; h.className = "v green"; }
+  else { h.textContent = "读取失败(需管理员?)"; h.className = "v orange"; }
+
+  const t = $("#stTask");
+  if (status.task && status.task.exists) { t.textContent = "已注册,每分钟运行"; t.className = "v green"; }
+  else { t.textContent = "未注册(请重新运行 install.bat)"; t.className = "v red"; }
+
+  const a = $("#stAdmin");
+  a.textContent = status.isAdmin ? "管理员" : "普通用户(修改将延迟 ≤1 分钟)";
+  a.className = "v " + (status.isAdmin ? "green" : "orange");
+
+  $("#stNext").textContent = status.nextActive || (status.active ? "当前正在屏蔽" : "未设置计划");
+  const lr = status.lastRun;
+  $("#stLast").textContent = lr && lr.time ? lr.time + (lr.error ? " (出错: " + lr.error + ")" : "") : "尚无记录";
+}
+
+function renderSchedule() {
+  const days = cfg.schedule.days;
+  $("#dayChips").innerHTML = DAY_LABELS.map((l, i) =>
+    `<div class="chip ${days.includes(i + 1) ? "on" : ""}" data-day="${i + 1}">周${l}</div>`).join("");
+
+  const ws = cfg.schedule.windows;
+  $("#windowRows").innerHTML = (ws.length ? ws : [{ start: "19:00", end: "22:00" }]).map((w, i) =>
+    `<div class="window-row">
+       <input type="time" value="${esc(w.start)}" data-i="${i}" data-f="start">
+       <span class="sep">→</span>
+       <input type="time" value="${esc(w.end)}" data-i="${i}" data-f="end">
+       <button class="btn small red del-window" data-i="${i}">删除</button>
+     </div>`).join("");
+  if (!ws.length) cfg.schedule.windows = [{ start: "19:00", end: "22:00" }];
+}
+
+function presetState(preset, list) {
+  const all = preset.domains ? preset.domains : preset.names;
+  const n = all.filter(d => list.includes(d.toLowerCase ? d.toLowerCase() : d)).length;
+  return { checked: n === all.length, mixed: n > 0 && n < all.length };
+}
+
+function renderSites() {
+  $("#webSwitch").checked = !!cfg.blockWebsites;
+  $("#sitePresets").innerHTML = SITE_PRESETS.map(p => {
+    const st = presetState(p, cfg.blockedSites);
+    return `<div class="preset ${st.checked ? "checked" : ""}" data-preset="${esc(p.label)}">
+      <input type="checkbox" ${st.checked ? "checked" : ""}>
+      <div><div class="t">${esc(p.label)}</div><div class="d">${esc(p.domains.join(" · "))}</div></div>
+    </div>`;
+  }).join("");
+  // 半选状态
+  document.querySelectorAll("#sitePresets .preset").forEach(el => {
+    const p = SITE_PRESETS.find(x => x.label === el.dataset.preset);
+    const st = presetState(p, cfg.blockedSites);
+    if (st.mixed) el.querySelector("input").indeterminate = true;
+  });
+  renderList("#siteList", cfg.blockedSites, "site");
+}
+
+function renderProcesses() {
+  $("#procPresets").innerHTML = PROC_PRESETS.map(p => {
+    const st = presetState(p, cfg.blockedProcesses);
+    return `<div class="preset ${st.checked ? "checked" : ""}" data-preset="${esc(p.label)}">
+      <input type="checkbox" ${st.checked ? "checked" : ""}>
+      <div><div class="t">${esc(p.label)}</div><div class="d">${esc(p.names.join(", "))}</div></div>
+    </div>`;
+  }).join("");
+  document.querySelectorAll("#procPresets .preset").forEach(el => {
+    const p = PROC_PRESETS.find(x => x.label === el.dataset.preset);
+    const st = presetState(p, cfg.blockedProcesses);
+    if (st.mixed) el.querySelector("input").indeterminate = true;
+  });
+  renderList("#procList", cfg.blockedProcesses, "proc");
+}
+
+function renderWhitelist() {
+  renderList("#wlSiteList", cfg.whitelist.sites, "wlsite");
+  renderList("#wlProcList", cfg.whitelist.processes, "wlproc");
+}
+
+function renderList(sel, arr, kind) {
+  const box = $(sel);
+  box.innerHTML = arr.length ? arr.map(v =>
+    `<div class="list-item"><code>${esc(v)}</code><button class="btn small red del-item" data-kind="${kind}" data-v="${esc(v)}">✕</button></div>`).join("")
+    : `<div class="list-item" style="color:var(--muted)">(空)</div>`;
+}
+
+/* ================= 事件 ================= */
+
+// Tab 切换
+document.querySelectorAll(".nav-item").forEach(el => {
+  el.addEventListener("click", () => {
+    document.querySelectorAll(".nav-item").forEach(x => x.classList.remove("active"));
+    document.querySelectorAll(".panel").forEach(x => x.classList.remove("active"));
+    el.classList.add("active");
+    $("#panel-" + el.dataset.tab).classList.add("active");
+    const titles = { status:"状态", schedule:"屏蔽计划", sites:"网站屏蔽", processes:"进程屏蔽", whitelist:"白名单", about:"关于 / 卸载" };
+    $("#panelTitle").textContent = titles[el.dataset.tab];
+  });
+});
+
+function markDirty() { dirty = true; }
+
+// 总开关
+$("#enabledSwitch").addEventListener("change", e => { cfg.enabled = e.target.checked; markDirty(); });
+$("#webSwitch").addEventListener("change", e => { cfg.blockWebsites = e.target.checked; markDirty(); });
+
+// 星期
+$("#dayChips").addEventListener("click", e => {
+  const chip = e.target.closest(".chip");
+  if (!chip) return;
+  const d = +chip.dataset.day;
+  const days = cfg.schedule.days;
+  if (days.includes(d)) cfg.schedule.days = days.filter(x => x !== d);
+  else cfg.schedule.days = [...days, d].sort((a, b) => a - b);
+  renderSchedule(); markDirty();
+});
+
+// 时间段
+$("#windowRows").addEventListener("change", e => {
+  const t = e.target;
+  if (t.type === "time") {
+    const w = cfg.schedule.windows[+t.dataset.i];
+    if (w) w[t.dataset.f] = t.value;
+    markDirty();
+  }
+});
+$("#windowRows").addEventListener("click", e => {
+  if (e.target.classList.contains("del-window")) {
+    const i = +e.target.dataset.i;
+    cfg.schedule.windows.splice(i, 1);
+    renderSchedule(); markDirty();
+  }
+});
+$("#addWindowBtn").addEventListener("click", () => {
+  cfg.schedule.windows.push({ start: "19:00", end: "20:00" });
+  renderSchedule(); markDirty();
+});
+
+// 网站预设
+$("#sitePresets").addEventListener("click", e => {
+  const el = e.target.closest(".preset");
+  if (!el) return;
+  const p = SITE_PRESETS.find(x => x.label === el.dataset.preset);
+  const all = p.domains;
+  const present = all.filter(d => cfg.blockedSites.includes(d));
+  if (present.length === all.length) cfg.blockedSites = cfg.blockedSites.filter(d => !all.includes(d));
+  else cfg.blockedSites = [...new Set([...cfg.blockedSites, ...all.filter(d => !cfg.blockedSites.includes(d))])];
+  renderSites(); markDirty();
+});
+$("#addSiteBtn").addEventListener("click", () => addItem("#siteInput", v => cfg.blockedSites, "site"));
+$("#siteInput").addEventListener("keydown", e => { if (e.key === "Enter") $("#addSiteBtn").click(); });
+
+// 进程预设
+$("#procPresets").addEventListener("click", e => {
+  const el = e.target.closest(".preset");
+  if (!el) return;
+  const p = PROC_PRESETS.find(x => x.label === el.dataset.preset);
+  const all = p.names;
+  const present = all.filter(d => cfg.blockedProcesses.includes(d));
+  if (present.length === all.length) cfg.blockedProcesses = cfg.blockedProcesses.filter(d => !all.includes(d));
+  else cfg.blockedProcesses = [...new Set([...cfg.blockedProcesses, ...all.filter(d => !cfg.blockedProcesses.includes(d))])];
+  renderProcesses(); markDirty();
+});
+$("#addProcBtn").addEventListener("click", () => addItem("#procInput", v => cfg.blockedProcesses, "proc"));
+$("#procInput").addEventListener("keydown", e => { if (e.key === "Enter") $("#addProcBtn").click(); });
+
+// 白名单
+$("#addWlSiteBtn").addEventListener("click", () => addItem("#wlSiteInput", v => cfg.whitelist.sites, "wlsite"));
+$("#addWlProcBtn").addEventListener("click", () => addItem("#wlProcInput", v => cfg.whitelist.processes, "wlproc"));
+
+function addItem(inputSel, getList, kind) {
+  const input = $(inputSel);
+  let v = input.value.trim();
+  if (!v) return;
+  if (kind === "site" || kind === "wlsite") {
+    v = v.toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+    if (!/^[a-z0-9.\-]+$/.test(v)) { toast("域名格式不正确", "err"); return; }
+  }
+  const list = getList();
+  if (!list.includes(v)) list.push(v);
+  input.value = "";
+  if (kind === "site") renderSites(); else if (kind === "proc") renderProcesses(); else renderWhitelist();
+  markDirty();
+}
+
+// 删除列表项
+document.addEventListener("click", e => {
+  const btn = e.target.closest(".del-item");
+  if (!btn) return;
+  const { kind, v } = btn.dataset;
+  const lists = { site: cfg.blockedSites, proc: cfg.blockedProcesses, wlsite: cfg.whitelist.sites, wlproc: cfg.whitelist.processes };
+  const list = lists[kind];
+  const i = list.indexOf(v);
+  if (i >= 0) list.splice(i, 1);
+  if (kind === "site") renderSites(); else if (kind === "proc") renderProcesses(); else renderWhitelist();
+  markDirty();
+});
+
+// 保存
+$("#saveBtn").addEventListener("click", async () => {
+  if (!cfg) return;
+  const btn = $("#saveBtn");
+  btn.disabled = true;
+  try {
+    const r = await api("/api/config", "POST", cfg);
+    cfg = r.config;
+    dirty = false;
+    toast(r.note || "已保存", "ok");
+    await refreshStatus();
+  } catch (e) { toast("保存失败: " + e.message, "err"); }
+  btn.disabled = false;
+});
+
+// 状态操作
+async function refreshStatus() {
+  try { status = await api("/api/status"); renderTop(); renderStatus(); } catch (e) { toast("刷新状态失败: " + e.message, "err"); }
+}
+$("#applyBtn").addEventListener("click", async () => {
+  try { const r = await api("/api/apply", "POST", {}); toast(r.note || "已应用", "ok"); await refreshStatus(); }
+  catch (e) { toast("操作失败: " + e.message, "err"); }
+});
+$("#blockNowBtn").addEventListener("click", async () => {
+  try { const r = await api("/api/override", "POST", { mode: "block", minutes: 30 }); toast("已临时屏蔽 30 分钟, " + (r.note || ""), "ok"); await refreshStatus(); }
+  catch (e) { toast("操作失败: " + e.message, "err"); }
+});
+$("#unblockBtn").addEventListener("click", async () => {
+  try { await api("/api/override", "POST", { mode: "off", minutes: 30 }); toast("已临时解除 30 分钟", "ok"); await refreshStatus(); }
+  catch (e) { toast("操作失败: " + e.message, "err"); }
+});
+$("#clearOverrideBtn").addEventListener("click", async () => {
+  try { await api("/api/override", "POST", { mode: "none" }); toast("已清除临时设置", "ok"); await refreshStatus(); }
+  catch (e) { toast("操作失败: " + e.message, "err"); }
+});
+
+// 卸载
+$("#uninstallBtn").addEventListener("click", async () => {
+  if (!confirm("确定要卸载 AwayFromShorts 吗?\n\n将删除计划任务、恢复 hosts 文件、删除程序目录。")) return;
+  try {
+    const r = await api("/api/uninstall", "POST", {});
+    toast(r.note || "卸载已启动", "ok");
+  } catch (e) { toast("卸载失败: " + e.message, "err"); }
+});
+
+// 离开前提醒
+window.addEventListener("beforeunload", e => {
+  if (dirty) { e.preventDefault(); e.returnValue = ""; }
+});
+
+load();
+</script>
+</body>
+</html>

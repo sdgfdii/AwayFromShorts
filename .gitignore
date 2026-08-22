@@ -1,0 +1,15 @@
+# 构建产物
+dist/
+*.zip
+
+# 运行时生成(用户本机)
+config.json
+last-run.json
+hosts.backup
+*.log
+
+# 系统/编辑器
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
