@@ -22,8 +22,8 @@
 
 **最简单: 下载单文件 EXE,双击,点一下 UAC「是」,完事。** 不需要解压、不需要命令行:
 
-- 到 [Releases](https://github.com/sdgfdii/AwayFromShorts/releases) 下载 `AwayFromShorts-Setup-1.0.1.exe`
-- 双击运行 → 弹 UAC 请求管理员权限 → 自动: 解压内置包 → 安装到 `%LOCALAPPDATA%\AwayFromShorts` → 备份 hosts → 注册计划任务(每分钟,最高权限)→ 立即执行一次 → 打开配置面板
+- 到 [Releases](https://github.com/sdgfdii/AwayFromShorts/releases) 下载 `AwayFromShorts-Setup-1.0.2.exe`
+- 双击运行 → 弹 UAC 请求管理员权限 → 自动: 解压内置包 → 安装到 `%LOCALAPPDATA%\AwayFromShorts` → 备份 hosts → 注册计划任务(每分钟,最高权限,**不登录也运行**)→ 立即执行一次 → 打开配置面板
 - 完成弹窗提示安装成功,浏览器自动打开 **http://127.0.0.1:8737**
 
 **或者用 PowerShell 一行安装(懒人包):**
@@ -63,7 +63,7 @@ irm https://raw.githubusercontent.com/sdgfdii/AwayFromShorts/main/install.ps1 | 
 ## ⚙️ 工作原理
 
 ```
-┌─────────────┐   每分钟(计划任务,最高权限)   ┌──────────────────┐
+┌─────────────┐   每分钟(计划任务,最高权限,不登录也运行)   ┌──────────────────┐
 │  config.json │ ─────────────────────────────▶ │  屏蔽引擎         │
 │  规则+计划    │                              │  awayfromshorts   │
 └─────────────┘                              │  .ps1             │
@@ -95,6 +95,7 @@ AwayFromShorts/
 └── src/
     ├── core.ps1           # 核心函数: 配置/计划/hosts/进程
     ├── awayfromshorts.ps1 # 屏蔽引擎(计划任务每分钟跑)
+    ├── register-task.ps1  # 注册计划任务(S4U: 不登录也运行, 最高权限)
     ├── webui.ps1          # 本地配置面板服务器
     ├── uninstall.ps1      # 卸载逻辑
     ├── config.example.json

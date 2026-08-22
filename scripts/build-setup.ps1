@@ -66,11 +66,11 @@ __B64__;
                 string bak = Path.Combine(app, "hosts.backup");
                 if (!File.Exists(bak) && File.Exists(hosts)) { File.Copy(hosts, bak); }
 
-                // 5. 注册计划任务 (HIGHEST, 每分钟, 隐藏窗口) — 失败则中止安装
+                // 5. 注册计划任务 (S4U: 不登录也运行, HIGHEST, 每分钟, 隐藏窗口) — 失败则中止安装
                 string taskFile = Path.Combine(app, "src", "awayfromshorts.ps1");
-                string tr = "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"" + taskFile + "\"";
-                int rc = RunCmd("schtasks", "/Create /F /TN AwayFromShorts /TR \"" + tr.Replace("\"", "\\\"") + "\" /SC MINUTE /MO 1 /RL HIGHEST");
-                if (rc != 0) { throw new Exception("计划任务注册失败 (schtasks exit " + rc + ")"); }
+                string regTask = Path.Combine(app, "src", "register-task.ps1");
+                int rc = RunCmd("powershell.exe", "-NoProfile -ExecutionPolicy Bypass -File \"" + regTask + "\" -TaskFile \"" + taskFile + "\"");
+                if (rc != 0) { throw new Exception("计划任务注册失败 (exit " + rc + ")"); }
 
                 // 6. 立即执行一次(隐藏窗口) + 启动面板
                 RunCmd("powershell.exe", "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"" + taskFile + "\"");
