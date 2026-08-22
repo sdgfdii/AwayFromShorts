@@ -108,16 +108,25 @@ function Merge-AfsDeep {
     $Base
 }
 
+# 列表规范化: 数组原样, 哈希表取 Keys, 标量包成数组 (防止对象被 ToString 成 "System.Collections.Hashtable")
+function Normalize-AfsList {
+    param($Value)
+    if ($null -eq $Value) { return @() }
+    if ($Value -is [System.Collections.IDictionary]) { return @($Value.Keys) }
+    if ($Value -is [System.Collections.IEnumerable] -and $Value -isnot [string]) { return @($Value) }
+    return @($Value)
+}
+
 # 校验 + 规范化 + 落盘
 function Set-AfsConfigSafe {
     param($InputConfig)
     $cfg = Merge-AfsDeep -Base (Get-AfsDefaultConfig) -Overlay $InputConfig
     $cfg.enabled = [bool]$cfg.enabled
 
-    $cfg.schedule.days = @($cfg.schedule.days | ForEach-Object { try { [int]$_ } catch { 0 } } |
+    $cfg.schedule.days = @(Normalize-AfsList $cfg.schedule.days | ForEach-Object { try { [int]$_ } catch { 0 } } |
         Where-Object { $_ -ge 1 -and $_ -le 7 } | Sort-Object -Unique)
 
-    $cfg.schedule.windows = @($cfg.schedule.windows | ForEach-Object {
+    $cfg.schedule.windows = @(Normalize-AfsList $cfg.schedule.windows | ForEach-Object {
         $s = [string]$_.start; $e = [string]$_.end
         if ($s -match '^\d{1,2}:\d{2}$' -and $e -match '^\d{1,2}:\d{2}$') {
             $sh = [int]($s -split ':')[0]; $sm = [int]($s -split ':')[1]
@@ -129,14 +138,14 @@ function Set-AfsConfigSafe {
     })
 
     $cfg.blockWebsites = [bool]$cfg.blockWebsites
-    $cfg.blockedSites = @($cfg.blockedSites | ForEach-Object { ([string]$_).Trim().ToLower() } |
+    $cfg.blockedSites = @(Normalize-AfsList $cfg.blockedSites | ForEach-Object { ([string]$_).Trim().ToLower() } |
         Where-Object { $_ -match '^[a-z0-9.\-]+$' } | Sort-Object -Unique)
-    $cfg.blockedProcesses = @($cfg.blockedProcesses | ForEach-Object { ([string]$_).Trim() } |
+    $cfg.blockedProcesses = @(Normalize-AfsList $cfg.blockedProcesses | ForEach-Object { ([string]$_).Trim() } |
         Where-Object { $_ } | Sort-Object -Unique)
 
-    $cfg.whitelist.sites = @($cfg.whitelist.sites | ForEach-Object { ([string]$_).Trim().ToLower() } |
+    $cfg.whitelist.sites = @(Normalize-AfsList $cfg.whitelist.sites | ForEach-Object { ([string]$_).Trim().ToLower() } |
         Where-Object { $_ -match '^[a-z0-9.\-]+$' } | Sort-Object -Unique)
-    $cfg.whitelist.processes = @($cfg.whitelist.processes | ForEach-Object { ([string]$_).Trim() } |
+    $cfg.whitelist.processes = @(Normalize-AfsList $cfg.whitelist.processes | ForEach-Object { ([string]$_).Trim() } |
         Where-Object { $_ } | Sort-Object -Unique)
 
     if ($cfg.override.mode -notin @('none','block','off')) { $cfg.override.mode = 'none' }
