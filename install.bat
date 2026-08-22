@@ -43,10 +43,14 @@ if %errorlevel% neq 0 (
   exit /b 1
 )
 
-echo [4/5] 立即执行一次屏蔽检查
+echo [4/5] 设置开机自启(登录时自动启动面板)
+set "STARTUP=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup"
+copy /y "%SRC%startup-webui.vbs" "%STARTUP%\AwayFromShorts-WebUI.vbs" >nul
+
+echo [5/5] 立即执行一次屏蔽检查
 powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%APP%\src\awayfromshorts.ps1"
 
-echo [5/5] 启动可视化配置面板
+echo [6/6] 启动可视化配置面板
 start "" powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%APP%\src\webui.ps1"
 timeout /t 1 /nobreak >nul
 start "" "http://127.0.0.1:8737"

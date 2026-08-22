@@ -72,6 +72,11 @@ __B64__;
                 int rc = RunCmd("powershell.exe", "-NoProfile -ExecutionPolicy Bypass -File \"" + regTask + "\" -TaskFile \"" + taskFile + "\"");
                 if (rc != 0) { throw new Exception("计划任务注册失败 (exit " + rc + ")"); }
 
+                // 5.5 开机自启: 启动文件夹放隐藏启动脚本(登录自动拉起面板, 不闪窗口)
+                string vbsSrc = Path.Combine(app, "startup-webui.vbs");
+                string vbsDst = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Startup), "AwayFromShorts-WebUI.vbs");
+                if (File.Exists(vbsSrc)) { File.Copy(vbsSrc, vbsDst, true); }
+
                 // 6. 立即执行一次(隐藏窗口) + 启动面板
                 RunCmd("powershell.exe", "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"" + taskFile + "\"");
                 Process.Start(new ProcessStartInfo("powershell.exe") {

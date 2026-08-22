@@ -43,6 +43,10 @@ try {
 Write-Host '[4/5] 清理备份文件...'
 if (Test-Path (Join-Path $appRoot 'hosts.backup')) { Remove-Item (Join-Path $appRoot 'hosts.backup') -Force -ErrorAction SilentlyContinue }
 
+# 4.5 删除开机自启项(启动文件夹里的隐藏启动脚本)
+$startupVbs = Join-Path ([Environment]::GetFolderPath('Startup')) 'AwayFromShorts-WebUI.vbs'
+if (Test-Path $startupVbs) { Remove-Item $startupVbs -Force -ErrorAction SilentlyContinue }
+
 # 5. 删除程序目录(延迟到本进程退出后, 用临时 bat 清理)
 Write-Host '[5/5] 删除程序文件...'
 $cleanup = Join-Path $env:TEMP "afs-cleanup-$PID.bat"

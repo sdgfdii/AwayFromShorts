@@ -16,6 +16,7 @@ New-Item -ItemType Directory -Path $stage | Out-Null
 Copy-Item (Join-Path $root 'install.bat')      $stage
 Copy-Item (Join-Path $root 'uninstall.bat')    $stage
 Copy-Item (Join-Path $root 'start-web.bat')    $stage
+Copy-Item (Join-Path $root 'startup-webui.vbs') $stage
 Copy-Item (Join-Path $root 'README.md')        $stage
 Copy-Item (Join-Path $root 'LICENSE')          $stage
 Copy-Item (Join-Path $root 'src')              $stage -Recurse
