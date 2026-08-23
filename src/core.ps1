@@ -63,7 +63,7 @@ function ConvertTo-AfsHashtable {
     if ($InputObject -is [System.Collections.IList]) {
         $arr = @()
         foreach ($item in $InputObject) { $arr += ConvertTo-AfsHashtable $item }
-        return $arr
+        return ,$arr   # 一元逗号: 防止单元素数组被 PS 自动展开成标量
     }
     return $InputObject
 }
@@ -104,7 +104,7 @@ function Merge-AfsDeep {
         }
         return $out
     }
-    if ($null -ne $Overlay) { return $Overlay }
+    if ($null -ne $Overlay) { return ,$Overlay }   # 一元逗号: 数组(尤其单元素)原样返回, 不被展开成标量
     $Base
 }
 
