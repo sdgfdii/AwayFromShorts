@@ -35,5 +35,11 @@
   },
   "web": {
     "port": 8737
+  },
+  "clash": {
+    "enabled": true,
+    "systemProxy": true,
+    "tun": true,
+    "tunAdapter": "Meta"
   }
 }

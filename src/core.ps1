@@ -49,6 +49,12 @@ function Get-AfsDefaultConfig {
         whitelist = @{ sites = @(); processes = @() }
         override = @{ mode = 'none'; until = $null }
         web = @{ port = 8737 }
+        clash = @{
+            enabled      = $true   # 屏蔽时接管 Clash: 关系统代理 + 禁 TUN
+            systemProxy  = $true   # 关/恢复 Windows 系统代理
+            tun          = $true   # 禁/启 TUN 虚拟网卡
+            tunAdapter   = 'Meta'  # TUN 网卡名 (Clash Verge Rev 默认 'Meta', 找不到则自动探测)
+        }
     }
 }
 
@@ -322,6 +328,111 @@ function Set-AfsLog {
     Write-AfsJson -Path $Path -Object $Log
 }
 
+# ---------- Clash 代理/TUN 控制 ----------
+# 屏蔽时: 关系统代理 + 禁 TUN 网卡, 防止流量走 Clash 绕过 hosts 屏蔽
+# 解除时: 按屏蔽前记录的原状态恢复
+
+$script:AFS_CLASH_STATE = 'clash-state.json'
+
+function Get-AfsClashStatePath {
+    (Join-Path (Split-Path (Get-AfsConfigPath)) $script:AFS_CLASH_STATE)
+}
+
+function Read-AfsClashState {
+    $p = Get-AfsClashStatePath
+    if (Test-Path $p) {
+        try { Read-AfsJson -Path $p } catch { $null }
+    } else { $null }
+}
+
+function Save-AfsClashState {
+    param($State)
+    Write-AfsJson -Path (Get-AfsClashStatePath) -Object $State
+}
+
+function Remove-AfsClashState {
+    $p = Get-AfsClashStatePath
+    if (Test-Path $p) { Remove-Item $p -Force -ErrorAction SilentlyContinue }
+}
+
+# 读 Windows 系统代理当前状态 (注册表 WinINET)
+function Get-AfsSystemProxyState {
+    $key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings'
+    $v = Get-ItemProperty -Path $key -ErrorAction SilentlyContinue
+    @{
+        enabled = ([int]$v.ProxyEnable -eq 1)
+        server  = [string]$v.ProxyServer
+    }
+}
+
+function Set-AfsSystemProxyEnabled {
+    param([bool]$Enabled, [string]$Server)
+    $key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings'
+    try {
+        Set-ItemProperty -Path $key -Name ProxyEnable -Value ([int]$Enabled) -ErrorAction Stop
+        if ($Enabled -and $Server) { Set-ItemProperty -Path $key -Name ProxyServer -Value $Server -ErrorAction Stop }
+    } catch {
+        Write-Warning "设置系统代理失败: $($_.Exception.Message)"
+    }
+}
+
+# 探测 TUN 网卡: 优先用配置名, 找不到就按特征匹配
+function Find-AfsTunAdapter {
+    param([string]$Preferred)
+    if ($Preferred) {
+        $a = Get-NetAdapter -Name $Preferred -IncludeHidden -ErrorAction SilentlyContinue
+        if ($a) { return $a }
+    }
+    Get-NetAdapter -IncludeHidden -ErrorAction SilentlyContinue |
+        Where-Object { ($_.Name -match 'meta|clash|mihomo|verge') -or ($_.InterfaceDescription -match 'wintun|tunnel') } |
+        Select-Object -First 1
+}
+
+# 屏蔽时: 记录原状态 + 关闭系统代理和 TUN (幂等: 已关则跳过)
+function Invoke-AfsClashOff {
+    param($Config, [switch]$Simulate)
+    if (-not $Config.clash.enabled) { return }
+    $state = Read-AfsClashState
+    if (-not $state) {
+        $sp = Get-AfsSystemProxyState
+        $ad = Find-AfsTunAdapter -Preferred $Config.clash.tunAdapter
+        $state = @{
+            proxyEnabled = $sp.enabled
+            proxyServer  = $sp.server
+            tunWasUp     = [bool]($ad -and $ad.Status -eq 'Up')
+            tunAdapter   = if ($ad) { $ad.Name } else { $null }
+        }
+        if (-not $Simulate) { Save-AfsClashState -State $state }
+    }
+    if ($Simulate) { Write-Output '[simulate] clash-off: 关系统代理 + 禁 TUN'; return }
+    if ($Config.clash.systemProxy) { Set-AfsSystemProxyEnabled -Enabled $false }
+    if ($Config.clash.tun -and $state.tunAdapter) {
+        try {
+            $a = Get-NetAdapter -Name $state.tunAdapter -IncludeHidden -ErrorAction SilentlyContinue
+            if ($a -and $a.Status -eq 'Up') { Disable-NetAdapter -Name $state.tunAdapter -Confirm:$false -ErrorAction Stop }
+        } catch { Write-Warning "禁用 TUN 网卡 $($state.tunAdapter) 失败: $($_.Exception.Message)" }
+    }
+}
+
+# 解除时: 按记录恢复系统代理和 TUN, 然后清理状态文件
+function Invoke-AfsClashRestore {
+    param($Config, [switch]$Simulate)
+    if (-not $Config.clash.enabled) { return }
+    $state = Read-AfsClashState
+    if (-not $state) { return }
+    if ($Simulate) { Write-Output '[simulate] clash-restore: 恢复系统代理 + 启 TUN'; return }
+    if ($Config.clash.systemProxy) {
+        Set-AfsSystemProxyEnabled -Enabled ([bool]$state.proxyEnabled) -Server ([string]$state.proxyServer)
+    }
+    if ($Config.clash.tun -and $state.tunAdapter) {
+        try {
+            $a = Get-NetAdapter -Name $state.tunAdapter -IncludeHidden -ErrorAction SilentlyContinue
+            if ($a -and $a.Status -ne 'Up') { Enable-NetAdapter -Name $state.tunAdapter -Confirm:$false -ErrorAction Stop }
+        } catch { Write-Warning "启用 TUN 网卡 $($state.tunAdapter) 失败: $($_.Exception.Message)" }
+    }
+    Remove-AfsClashState
+}
+
 # 核心: 根据配置执行一次屏蔽/解除
 function Invoke-AfsEnforce {
     param(
@@ -365,6 +476,8 @@ function Invoke-AfsEnforce {
                 }
                 $log.killed = @($killed | Select-Object -Unique)
             }
+            # 屏蔽时段: 关 Clash 系统代理 + TUN (防绕过 hosts)
+            if ($Simulate) { Invoke-AfsClashOff -Config $Config -Simulate } else { Invoke-AfsClashOff -Config $Config }
         } else {
             if ($Simulate) {
                 $log.hosts = 'simulate-clean'
@@ -372,6 +485,8 @@ function Invoke-AfsEnforce {
                 Remove-AfsHostsBlock -Path $HostsPath
                 $log.hosts = 'clean'
             }
+            # 解除屏蔽: 恢复 Clash 原状态
+            if ($Simulate) { Invoke-AfsClashRestore -Config $Config -Simulate } else { Invoke-AfsClashRestore -Config $Config }
         }
         # 过期 override 自动清理
         if ($Config.override.mode -ne 'none' -and $Config.override.until) {
