@@ -22,7 +22,7 @@
 
 **最简单: 下载单文件 EXE,双击,点一下 UAC「是」,完事。** 不需要解压、不需要命令行:
 
-- 到 [Releases](https://github.com/sdgfdii/AwayFromShorts/releases) 下载 `AwayFromShorts-Setup-1.1.0.exe`
+- 到 [Releases](https://github.com/sdgfdii/AwayFromShorts/releases) 下载 `AwayFromShorts-Setup-1.1.1.exe`
 - 双击运行 → 弹 UAC 请求管理员权限 → 自动: 解压内置包 → 安装到 `%LOCALAPPDATA%\AwayFromShorts` → 备份 hosts → 注册计划任务(每分钟,最高权限,**不登录也运行**)→ **设置开机自启**(登录自动启动面板,不闪窗口)→ 立即执行一次 → 打开配置面板
 - 完成弹窗提示安装成功,浏览器自动打开 **http://127.0.0.1:8737**
 
@@ -88,7 +88,7 @@ irm https://raw.githubusercontent.com/sdgfdii/AwayFromShorts/main/install.ps1 | 
 ```
 
 - **网站屏蔽**: 屏蔽期间向 `C:\Windows\System32\drivers\etc\hosts` 写入 `0.0.0.0 域名`,浏览器直接无法解析;解除时只删除本程序写入的标记块,不动你的其他 hosts 配置(安装时会先备份)。
-- **Clash 接管**: 屏蔽期间自动**关闭 Windows 系统代理 + 禁用 Clash TUN 虚拟网卡**,防止流量走代理绕过 hosts 屏蔽;屏蔽结束(或手动解除)后,按屏蔽前记录的原状态**自动恢复系统代理并重新启用 TUN**。Clash 配置可通过 `config.json` 的 `clash` 块调整(`tunAdapter` 默认 `Meta`,找不到时自动探测)。
+- **Clash 接管**: 屏蔽期间自动**关闭 Windows 系统代理 + 禁用 Clash TUN 虚拟网卡**,防止流量走代理绕过 hosts 屏蔽;屏蔽结束(或手动解除)后,按屏蔽前记录的原状态**自动恢复系统代理并重新启用 TUN**。Clash 配置可通过 `config.json` 的 `clash` 块调整(`tunAdapter` 默认 `Meta`,找不到时自动探测)。**如果屏蔽时段还需要联网工作(如 Codex 写代码),可在面板「屏蔽网站」页关闭「屏蔽时接管 Clash」开关**(即 `clash.enabled: false`)——屏蔽照常进行,但系统代理和 TUN 保持开启(网站屏蔽可能被代理绕过)。
 - **进程屏蔽**: `Stop-Process` 强制结束,计划任务每分钟复查一次,所以"关掉又打开"也没用。
 - **配置**: `%LOCALAPPDATA%\AwayFromShorts\src\config.json`,纯 JSON,手动改也可以(改完面板里点一下「立即应用」)。
 

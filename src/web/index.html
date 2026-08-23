@@ -291,6 +291,15 @@
         <div class="hint">勾选常用网站预设,或添加自定义域名。屏蔽期间这些域名将无法访问(整站屏蔽,不能只屏蔽某个频道的短视频)。</div>
       </div>
       <div class="card">
+        <div class="switch-row">
+          <div class="lbl">
+            <label class="switch"><input type="checkbox" id="clashSwitch"><span class="slider"></span></label>
+            <b>屏蔽时接管 Clash(关系统代理 + TUN)</b>
+          </div>
+        </div>
+        <div class="hint">开启后,屏蔽期间会关闭 Windows 系统代理并禁用 Clash 的 TUN 虚拟网卡,防止流量走代理绕过 hosts 屏蔽;屏蔽结束自动恢复。<b>如果你屏蔽时段还要联网工作(如 Codex / 写代码),请关闭此开关</b>——关闭后屏蔽照常进行,但代理和 TUN 保持开启(网站屏蔽可能被代理绕过)。</div>
+      </div>
+      <div class="card">
         <h3>常用网站</h3>
         <div class="preset-grid" id="sitePresets"></div>
       </div>
@@ -577,6 +586,8 @@ function presetState(preset, list) {
 
 function renderSites() {
   $("#webSwitch").checked = !!cfg.blockWebsites;
+  const clash = cfg.clash || {};
+  $("#clashSwitch").checked = clash.enabled !== false;
   $("#sitePresets").innerHTML = SITE_PRESETS.map(p => {
     const st = presetState(p, cfg.blockedSites);
     return `<div class="preset ${st.checked ? "checked" : ""}" data-preset="${esc(p.label)}">
@@ -652,6 +663,11 @@ function markDirty() { dirty = true; }
 // 总开关
 $("#enabledSwitch").addEventListener("change", e => { cfg.enabled = e.target.checked; markDirty(); });
 $("#webSwitch").addEventListener("change", e => { cfg.blockWebsites = e.target.checked; markDirty(); });
+$("#clashSwitch").addEventListener("change", e => {
+  if (!cfg.clash) cfg.clash = { enabled: true, systemProxy: true, tun: true, tunAdapter: "Meta" };
+  cfg.clash.enabled = e.target.checked;
+  markDirty();
+});
 
 // 星期
 $("#dayChips").addEventListener("click", e => {
