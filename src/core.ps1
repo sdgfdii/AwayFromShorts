@@ -5,7 +5,7 @@
 # ============================================================
 
 $script:AFS_NAME        = 'AwayFromShorts'
-$script:AFS_VERSION     = '1.0.0'
+$script:AFS_VERSION     = '1.1.0'
 $script:AFS_MARK_START  = "# >>> $($script:AFS_NAME) >>> (managed by AwayFromShorts - do not edit)"
 $script:AFS_MARK_END    = "# <<< $($script:AFS_NAME) <<<"
 # 这些进程永远不杀,防止把系统/本工具自己弄死
@@ -519,4 +519,196 @@ function Get-AfsTaskInfo {
         if ($line -match '^\s*(就绪|Ready)') { $status = 'ready' }
     }
     @{ exists = $true; status = $status }
+}
+
+# ---------- 云同步 (GitHub Gist) ----------
+# 登录 = 保存 GitHub Personal Access Token (DPAPI 加密, 仅当前 Windows 用户可解)
+# 配置通过私有 Gist 同步, 支持多设备共用一份配置
+# 安全: Token 只发给 api.github.com, 绝不写入配置文件/日志/Gist
+
+$script:AFS_API_BASE  = 'https://api.github.com'
+$script:AFS_GIST_DESC = 'AwayFromShorts 配置同步'
+$script:AFS_GIST_FILE = 'config.json'
+
+function Get-AfsSyncDir { (Split-Path (Get-AfsConfigPath)) }
+function Get-AfsTokenPath { Join-Path (Get-AfsSyncDir) 'github-token.enc' }
+function Get-AfsSyncStatePath { Join-Path (Get-AfsSyncDir) 'sync-state.json' }
+
+# 保存 Token: ConvertFrom-SecureString 默认用 DPAPI(当前用户+机器), 密文落盘
+function Save-AfsGitHubToken {
+    param([string]$Token)
+    if (-not $Token) { throw 'Token 不能为空' }
+    $sec = ConvertTo-SecureString $Token -AsPlainText -Force
+    $enc = ConvertFrom-SecureString $sec
+    $utf8 = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText((Get-AfsTokenPath), $enc, $utf8)
+}
+
+function Get-AfsGitHubToken {
+    $p = Get-AfsTokenPath
+    if (-not (Test-Path $p)) { return $null }
+    try {
+        $enc = [System.IO.File]::ReadAllText($p)
+        $sec = ConvertTo-SecureString $enc
+        $bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($sec)
+        try { return [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr) }
+        finally { [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr) }
+    } catch { return $null }
+}
+
+function Clear-AfsGitHubToken {
+    $p = Get-AfsTokenPath
+    if (Test-Path $p) { Remove-Item $p -Force }
+    $s = Get-AfsSyncStatePath
+    if (Test-Path $s) { Remove-Item $s -Force }
+}
+
+function Get-AfsSyncState {
+    $p = Get-AfsSyncStatePath
+    if (Test-Path $p) {
+        try { return ConvertTo-AfsHashtable (ConvertFrom-Json ([System.IO.File]::ReadAllText($p, [System.Text.Encoding]::UTF8))) } catch { }
+    }
+    @{ gistId = $null; lastSync = $null; autoPush = $false }
+}
+
+function Save-AfsSyncState {
+    param($State)
+    $utf8 = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText((Get-AfsSyncStatePath), (ConvertTo-Json $State -Depth 6), $utf8)
+}
+
+# GitHub API 封装: 强制 TLS1.2, 统一错误处理 (401/403/404 转成中文信息)
+function Invoke-AfsGitHubApi {
+    param([string]$Method, [string]$Path, $Body, [string]$Token, [int]$TimeoutSec = 20)
+    try {
+        [System.Net.ServicePointManager]::SecurityProtocol =
+            [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
+    } catch { }
+    $headers = @{
+        'Authorization' = 'token ' + $Token
+        'Accept'        = 'application/vnd.github+json'
+        'User-Agent'    = 'AwayFromShorts/' + $script:AFS_VERSION
+    }
+    $params = @{ Method = $Method; Uri = $script:AFS_API_BASE + $Path; Headers = $headers; TimeoutSec = $TimeoutSec; ErrorAction = 'Stop' }
+    if ($null -ne $Body) { $params.Body = $Body; $params.ContentType = 'application/json; charset=utf-8' }
+    try {
+        $resp = Invoke-RestMethod @params
+        ConvertTo-AfsHashtable $resp
+    } catch {
+        $msg = $_.Exception.Message
+        $code = $null
+        if ($_.Exception -is [System.Net.WebException] -and $_.Exception.Response) {
+            try {
+                $rs = $_.Exception.Response
+                $code = [int]$rs.StatusCode
+                $reader = New-Object System.IO.StreamReader($rs.GetResponseStream())
+                $raw = $reader.ReadToEnd()
+                $parsed = $raw | ConvertFrom-Json -ErrorAction SilentlyContinue
+                if ($parsed -and $parsed.message) { $msg = $parsed.message }
+            } catch { }
+        }
+        if ($code -eq 401) { throw "GitHub 认证失败(401): Token 无效或已过期" }
+        if ($code -eq 403) { throw "GitHub 拒绝访问(403): $msg" }
+        if ($code -eq 404) { throw "GitHub 资源不存在(404): $msg" }
+        throw "GitHub API 请求失败: $msg"
+    }
+}
+
+# 验证 Token 并返回用户信息 (login/name/email)
+function Get-AfsGitHubUser {
+    param([string]$Token)
+    Invoke-AfsGitHubApi -Method 'GET' -Path '/user' -Token $Token
+}
+
+function Test-AfsGitHubToken {
+    param([string]$Token)
+    try { $u = Get-AfsGitHubUser -Token $Token; return $true } catch { return $false }
+}
+
+# 同步内容 = 完整配置去掉临时 override(跨设备不该带"临时屏蔽"状态)
+function ConvertTo-AfsSyncPayload {
+    $cfg = Get-AfsConfig
+    $clean = @{}
+    foreach ($k in $cfg.Keys) { if ($k -ne 'override') { $clean[$k] = $cfg[$k] } }
+    ConvertTo-Json $clean -Depth 12
+}
+
+# 在账号的 Gist 列表里找同步 Gist (按 description 匹配), 找不到返回 $null
+function Find-AfsSyncGist {
+    param([string]$Token)
+    $gists = Invoke-AfsGitHubApi -Method 'GET' -Path '/gists?per_page=100' -Token $Token
+    foreach ($g in @($gists)) {
+        if ($g.description -eq $script:AFS_GIST_DESC) { return $g.id }
+    }
+    return $null
+}
+
+# 推送本机配置到私有 Gist (没有则创建, 有则更新)
+function Push-AfsSyncConfig {
+    param([string]$Token)
+    $state = Get-AfsSyncState
+    $gistId = $state.gistId
+    if (-not $gistId) { $gistId = Find-AfsSyncGist -Token $Token }
+    $content = ConvertTo-AfsSyncPayload
+    if ($gistId) {
+        Invoke-AfsGitHubApi -Method 'PATCH' -Path ('/gists/' + $gistId) -Token $Token -Body
+            (@{ files = @{ $script:AFS_GIST_FILE = @{ content = $content } } } | ConvertTo-Json -Depth 8)
+    } else {
+        $new = Invoke-AfsGitHubApi -Method 'POST' -Path '/gists' -Token $Token -Body
+            (@{
+                description = $script:AFS_GIST_DESC
+                public      = $false
+                files       = @{ $script:AFS_GIST_FILE = @{ content = $content } }
+            } | ConvertTo-Json -Depth 8)
+        $gistId = $new.id
+    }
+    $state.gistId = $gistId
+    $state.lastSync = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
+    Save-AfsSyncState $state
+    $state
+}
+
+# 从云端 Gist 拉取配置覆盖本机 (覆盖前自动备份)
+function Pull-AfsSyncConfig {
+    param([string]$Token)
+    $state = Get-AfsSyncState
+    $gistId = $state.gistId
+    if (-not $gistId) { $gistId = Find-AfsSyncGist -Token $Token }
+    if (-not $gistId) { throw '云端没有找到同步配置(请先在其他设备上推送一次)' }
+    $gist = Invoke-AfsGitHubApi -Method 'GET' -Path ('/gists/' + $gistId) -Token $Token
+    $file = $gist.files[$script:AFS_GIST_FILE]
+    if (-not $file -or -not $file.content) { throw '云端 Gist 中没有 config.json' }
+    $cfgPath = Get-AfsConfigPath
+    $bak = $null
+    if (Test-Path $cfgPath) {
+        $bak = $cfgPath + '.backup-' + (Get-Date -Format 'yyyyMMdd-HHmmss')
+        Copy-Item $cfgPath $bak -Force
+    }
+    $parsed = ConvertTo-AfsHashtable (ConvertFrom-Json $file.content -ErrorAction Stop)
+    $newCfg = Set-AfsConfigSafe -InputConfig $parsed
+    $state.gistId = $gistId
+    $state.lastSync = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
+    Save-AfsSyncState $state
+    @{ config = $newCfg; backup = $bak }
+}
+
+# 给面板用的账号信息 (无 Token / Token 失效都返回可序列化的结构)
+function Get-AfsAccountInfo {
+    $token = Get-AfsGitHubToken
+    if (-not $token) { return @{ loggedIn = $false } }
+    try {
+        $u = Get-AfsGitHubUser -Token $token
+        $state = Get-AfsSyncState
+        @{
+            loggedIn = $true
+            login    = $u.login
+            name     = if ($u.name) { $u.name } else { $null }
+            email    = if ($u.email) { $u.email } else { $null }
+            gistId   = $state.gistId
+            lastSync = $state.lastSync
+            autoPush = [bool]$state.autoPush
+        }
+    } catch {
+        @{ loggedIn = $false; error = $_.Exception.Message }
+    }
 }

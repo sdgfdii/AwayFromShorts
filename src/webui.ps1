@@ -198,6 +198,80 @@ $handler = {
             }
             return
         }
+        # ---------- 账号 / 云同步 (GitHub Gist) ----------
+        if ($method -eq 'GET' -and $path -eq '/api/account') {
+            Send-AfsJson -Stream $stream -Status 200 -Obj @{ ok = $true; account = (Get-AfsAccountInfo) }
+            return
+        }
+        if ($method -eq 'POST' -and $path -eq '/api/account/login') {
+            try {
+                $o = $body | ConvertFrom-Json -ErrorAction Stop
+                $token = [string]$o.token
+                if (-not $token) { throw '请输入 GitHub Personal Access Token' }
+                $u = Get-AfsGitHubUser -Token $token   # 验证失败会抛 401
+                Save-AfsGitHubToken -Token $token
+                $state = Get-AfsSyncState
+                Send-AfsJson -Stream $stream -Status 200 -Obj @{
+                    ok = $true
+                    account = @{
+                        loggedIn = $true; login = $u.login; name = $u.name; email = $u.email
+                        gistId = $state.gistId; lastSync = $state.lastSync; autoPush = [bool]$state.autoPush
+                    }
+                    note = "登录成功: $($u.login)"
+                }
+            } catch {
+                Send-AfsJson -Stream $stream -Status 401 -Obj @{ ok = $false; error = $_.Exception.Message }
+            }
+            return
+        }
+        if ($method -eq 'POST' -and $path -eq '/api/account/logout') {
+            Clear-AfsGitHubToken
+            Send-AfsJson -Stream $stream -Status 200 -Obj @{ ok = $true; note = '已退出登录, 本机 Token 已删除' }
+            return
+        }
+        if ($method -eq 'POST' -and $path -eq '/api/account/push') {
+            try {
+                $token = Get-AfsGitHubToken
+                if (-not $token) { throw '未登录, 请先输入 GitHub Token' }
+                $state = Push-AfsSyncConfig -Token $token
+                Send-AfsJson -Stream $stream -Status 200 -Obj @{
+                    ok = $true
+                    note = "已推送到云端 Gist ($($state.lastSync))"
+                    account = (Get-AfsAccountInfo)
+                }
+            } catch {
+                Send-AfsJson -Stream $stream -Status 500 -Obj @{ ok = $false; error = $_.Exception.Message }
+            }
+            return
+        }
+        if ($method -eq 'POST' -and $path -eq '/api/account/pull') {
+            try {
+                $token = Get-AfsGitHubToken
+                if (-not $token) { throw '未登录, 请先输入 GitHub Token' }
+                $r = Pull-AfsSyncConfig -Token $token
+                Send-AfsJson -Stream $stream -Status 200 -Obj @{
+                    ok = $true
+                    note = "已从云端拉取(本地已备份: $($r.backup))"
+                    config = $r.config
+                    account = (Get-AfsAccountInfo)
+                }
+            } catch {
+                Send-AfsJson -Stream $stream -Status 500 -Obj @{ ok = $false; error = $_.Exception.Message }
+            }
+            return
+        }
+        if ($method -eq 'POST' -and $path -eq '/api/account/autopush') {
+            try {
+                $o = $body | ConvertFrom-Json -ErrorAction Stop
+                $state = Get-AfsSyncState
+                $state.autoPush = [bool]$o.autoPush
+                Save-AfsSyncState $state
+                Send-AfsJson -Stream $stream -Status 200 -Obj @{ ok = $true; autoPush = [bool]$state.autoPush }
+            } catch {
+                Send-AfsJson -Stream $stream -Status 400 -Obj @{ ok = $false; error = $_.Exception.Message }
+            }
+            return
+        }
         if ($method -eq 'POST' -and $path -eq '/api/stop') {
             Send-AfsJson -Stream $stream -Status 200 -Obj @{ ok = $true }
             $script:AFS_STOP = $true

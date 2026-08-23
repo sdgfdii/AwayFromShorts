@@ -22,7 +22,7 @@
 
 **最简单: 下载单文件 EXE,双击,点一下 UAC「是」,完事。** 不需要解压、不需要命令行:
 
-- 到 [Releases](https://github.com/sdgfdii/AwayFromShorts/releases) 下载 `AwayFromShorts-Setup-1.0.4.exe`
+- 到 [Releases](https://github.com/sdgfdii/AwayFromShorts/releases) 下载 `AwayFromShorts-Setup-1.1.0.exe`
 - 双击运行 → 弹 UAC 请求管理员权限 → 自动: 解压内置包 → 安装到 `%LOCALAPPDATA%\AwayFromShorts` → 备份 hosts → 注册计划任务(每分钟,最高权限,**不登录也运行**)→ **设置开机自启**(登录自动启动面板,不闪窗口)→ 立即执行一次 → 打开配置面板
 - 完成弹窗提示安装成功,浏览器自动打开 **http://127.0.0.1:8737**
 
@@ -47,9 +47,20 @@ irm https://raw.githubusercontent.com/sdgfdii/AwayFromShorts/main/install.ps1 | 
 3. **网站屏蔽** — 勾选常用网站预设(抖音/TikTok/YouTube/B站/快手/小红书/微博/Instagram…),或添加自定义域名
 4. **进程屏蔽** — 勾选 Chrome/Edge/微信/QQ/Steam/Discord…,或添加自定义进程名(支持 `*` 通配符)
 5. **白名单** — 永远放行的域名和进程
-6. **关于/卸载** — 查看原理,一键卸载
+6. **账号/同步** — 登录 GitHub,把配置同步到私有 Gist(多设备共用一份规则)
+7. **关于/卸载** — 查看原理,一键卸载
 
 > ⚠️ 网站屏蔽是 **hosts 整站屏蔽** —— 屏蔽 YouTube 就是整个 youtube.com 都打不开,无法只屏蔽 Shorts 频道。这是 hosts 方案的固有限制,想要更精细的控制可以用浏览器插件。
+
+### ☁️ 多设备同步(账号 / Gist)
+
+面板 →「账号 / 同步」→ 输入 GitHub Personal Access Token(需勾选 `gist` 权限,创建方法: <https://github.com/settings/tokens> → Generate new token (classic) → 勾选 `gist`)→ 登录后即可:
+
+- **⬆️ 推送到云端**: 把本机配置上传到你的私有 Gist
+- **⬇️ 从云端拉取**: 用云端配置覆盖本机(覆盖前自动备份为 `config.json.backup-时间戳`)
+- **保存时自动推送**: 打开后,在面板点「保存更改」会自动同步到云端
+
+安全说明: Token 用 Windows DPAPI 加密后只保存在本机,仅发送到 `api.github.com`,不会写入配置文件、日志或 Gist;同步的配置不含临时屏蔽状态;Gist 为私有,只有你自己(和拿到你 Token 的人)能看。
 
 ## 🧹 一键卸载
 

@@ -204,6 +204,7 @@
     <div class="nav-item" data-tab="sites"><span class="dot"></span>网站屏蔽</div>
     <div class="nav-item" data-tab="processes"><span class="dot"></span>进程屏蔽</div>
     <div class="nav-item" data-tab="whitelist"><span class="dot"></span>白名单</div>
+    <div class="nav-item" data-tab="sync"><span class="dot"></span>账号 / 同步</div>
     <div class="nav-item" data-tab="about"><span class="dot"></span>关于 / 卸载</div>
   </aside>
 
@@ -344,6 +345,50 @@
       </div>
     </section>
 
+    <!-- ============ 账号 / 同步 ============ -->
+    <section class="panel" id="panel-sync">
+      <div class="card" id="syncLoginCard">
+        <h3>🔐 登录 GitHub 账号</h3>
+        <div class="hint">输入 GitHub Personal Access Token(勾选 <code>gist</code> 权限),配置将通过<b>私有 Gist</b> 在多台设备间同步。Token 用系统加密(DPAPI)只保存在本机,仅发送到 api.github.com。</div>
+        <input type="password" id="syncTokenInput" placeholder="粘贴 Token (ghp_... / github_pat_...)" style="width:100%">
+        <div class="btn-row">
+          <button class="btn primary" id="syncLoginBtn">🔓 登录</button>
+        </div>
+        <details class="tip">
+          <summary>如何创建 Token(点击展开)</summary>
+          <div class="inner">
+            <ol>
+              <li>打开 <a href="https://github.com/settings/tokens" target="_blank">github.com/settings/tokens</a></li>
+              <li>点 <b>Generate new token</b> → <b>Generate new token (classic)</b></li>
+              <li>勾选 <code>gist</code> 权限</li>
+              <li>生成后复制 <code>ghp_...</code> 开头的字符串,粘贴到上面输入框</li>
+            </ol>
+          </div>
+        </details>
+      </div>
+      <div class="card" id="syncAcctCard" style="display:none">
+        <h3>👤 已登录</h3>
+        <div class="status-grid">
+          <div class="status-cell"><div class="k">账号</div><div class="v" id="syncLogin">-</div></div>
+          <div class="status-cell"><div class="k">邮箱</div><div class="v" id="syncEmail">-</div></div>
+          <div class="status-cell"><div class="k">云端 Gist</div><div class="v" id="syncGist">-</div></div>
+          <div class="status-cell"><div class="k">最后同步</div><div class="v" id="syncLast">-</div></div>
+        </div>
+        <div class="switch-row">
+          <div class="lbl">
+            <label class="switch"><input type="checkbox" id="syncAutoSwitch"><span class="slider"></span></label>
+            <b>保存配置时自动推送到云端</b>
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn green" id="syncPushBtn">⬆️ 推送到云端</button>
+          <button class="btn" id="syncPullBtn">⬇️ 从云端拉取</button>
+          <button class="btn red" id="syncLogoutBtn">🚪 退出登录</button>
+        </div>
+        <div class="note">推送: 本机配置上传到私有 Gist。拉取: 云端配置覆盖本机(覆盖前自动备份到 config.json.backup-时间戳)。临时屏蔽状态不会同步。</div>
+      </div>
+    </section>
+
     <!-- ============ 关于 ============ -->
     <section class="panel" id="panel-about">
       <div class="card">
@@ -385,6 +430,7 @@
 /* ================= 状态 ================= */
 let cfg = null;
 let status = null;
+let acct = null;
 let dirty = false;
 
 const $ = s => document.querySelector(s);
@@ -441,9 +487,10 @@ const DAY_LABELS = ["一","二","三","四","五","六","日"];
 /* ================= 加载 ================= */
 async function load() {
   try {
-    const [c, s] = await Promise.all([api("/api/config"), api("/api/status")]);
+    const [c, s, a] = await Promise.all([api("/api/config"), api("/api/status"), api("/api/account")]);
     cfg = c.config;
     status = s;
+    acct = a.account;
     $("#verTag").textContent = s.version;
     $("#aboutVer").textContent = "v" + s.version;
     $("#aboutPort").textContent = (c.config.web && c.config.web.port) || 8737;
@@ -462,6 +509,7 @@ function renderAll() {
   renderSites();
   renderProcesses();
   renderWhitelist();
+  renderSync();
 }
 
 function renderTop() {
@@ -566,6 +614,18 @@ function renderWhitelist() {
   renderList("#wlProcList", cfg.whitelist.processes, "wlproc");
 }
 
+function renderSync() {
+  const ok = !!(acct && acct.loggedIn);
+  $("#syncLoginCard").style.display = ok ? "none" : "";
+  $("#syncAcctCard").style.display = ok ? "" : "none";
+  if (!ok) return;
+  $("#syncLogin").textContent = acct.login + (acct.name ? " (" + acct.name + ")" : "");
+  $("#syncEmail").textContent = acct.email || "未公开";
+  $("#syncGist").textContent = acct.gistId ? acct.gistId.slice(0, 8) + "…" : "未创建(推送时自动创建)";
+  $("#syncLast").textContent = acct.lastSync || "尚未同步";
+  $("#syncAutoSwitch").checked = !!acct.autoPush;
+}
+
 function renderList(sel, arr, kind) {
   const box = $(sel);
   box.innerHTML = arr.length ? arr.map(v =>
@@ -582,7 +642,7 @@ document.querySelectorAll(".nav-item").forEach(el => {
     document.querySelectorAll(".panel").forEach(x => x.classList.remove("active"));
     el.classList.add("active");
     $("#panel-" + el.dataset.tab).classList.add("active");
-    const titles = { status:"状态", schedule:"屏蔽计划", sites:"网站屏蔽", processes:"进程屏蔽", whitelist:"白名单", about:"关于 / 卸载" };
+    const titles = { status:"状态", schedule:"屏蔽计划", sites:"网站屏蔽", processes:"进程屏蔽", whitelist:"白名单", sync:"账号 / 同步", about:"关于 / 卸载" };
     $("#panelTitle").textContent = titles[el.dataset.tab];
   });
 });
@@ -696,6 +756,11 @@ $("#saveBtn").addEventListener("click", async () => {
     dirty = false;
     toast(r.note || "已保存", "ok");
     await refreshStatus();
+    // 自动推送: 保存成功后同步到云端
+    if (acct && acct.loggedIn && acct.autoPush) {
+      try { const p = await api("/api/account/push", "POST", {}); acct = p.account; renderSync(); }
+      catch (e) { toast("已保存, 但云端同步失败: " + e.message, "err"); }
+    }
   } catch (e) { toast("保存失败: " + e.message, "err"); }
   btn.disabled = false;
 });
@@ -719,6 +784,72 @@ $("#unblockBtn").addEventListener("click", async () => {
 $("#clearOverrideBtn").addEventListener("click", async () => {
   try { await api("/api/override", "POST", { mode: "none" }); toast("已清除临时设置", "ok"); await refreshStatus(); }
   catch (e) { toast("操作失败: " + e.message, "err"); }
+});
+
+// 账号 / 同步
+$("#syncLoginBtn").addEventListener("click", async () => {
+  const token = $("#syncTokenInput").value.trim();
+  if (!token) { toast("请先粘贴 GitHub Token", "err"); return; }
+  const btn = $("#syncLoginBtn");
+  btn.disabled = true;
+  try {
+    const r = await api("/api/account/login", "POST", { token });
+    acct = r.account;
+    $("#syncTokenInput").value = "";
+    renderSync();
+    toast(r.note || "登录成功", "ok");
+  } catch (e) { toast("登录失败: " + e.message, "err"); }
+  btn.disabled = false;
+});
+$("#syncTokenInput").addEventListener("keydown", e => { if (e.key === "Enter") $("#syncLoginBtn").click(); });
+
+$("#syncPushBtn").addEventListener("click", async () => {
+  const btn = $("#syncPushBtn");
+  btn.disabled = true;
+  try {
+    const r = await api("/api/account/push", "POST", {});
+    acct = r.account;
+    renderSync();
+    toast(r.note || "已推送到云端", "ok");
+  } catch (e) { toast("推送失败: " + e.message, "err"); }
+  btn.disabled = false;
+});
+
+$("#syncPullBtn").addEventListener("click", async () => {
+  if (!confirm("从云端拉取会用云端配置覆盖本机当前配置(本机会自动备份)。确定吗?")) return;
+  const btn = $("#syncPullBtn");
+  btn.disabled = true;
+  try {
+    const r = await api("/api/account/pull", "POST", {});
+    cfg = r.config;
+    acct = r.account;
+    dirty = false;
+    renderAll();
+    toast(r.note || "已从云端拉取", "ok");
+  } catch (e) { toast("拉取失败: " + e.message, "err"); }
+  btn.disabled = false;
+});
+
+$("#syncLogoutBtn").addEventListener("click", async () => {
+  if (!confirm("退出登录会删除本机保存的 Token,之后无法再同步。确定吗?")) return;
+  try {
+    await api("/api/account/logout", "POST", {});
+    acct = { loggedIn: false };
+    renderSync();
+    toast("已退出登录", "ok");
+  } catch (e) { toast("退出失败: " + e.message, "err"); }
+});
+
+$("#syncAutoSwitch").addEventListener("change", async e => {
+  const on = e.target.checked;
+  try {
+    const r = await api("/api/account/autopush", "POST", { autoPush: on });
+    if (acct) acct.autoPush = r.autoPush;
+    toast(on ? "已开启自动推送" : "已关闭自动推送", "ok");
+  } catch (err) {
+    e.target.checked = !on;
+    toast("设置失败: " + err.message, "err");
+  }
 });
 
 // 卸载
