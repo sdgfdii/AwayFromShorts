@@ -651,15 +651,15 @@ function Push-AfsSyncConfig {
     if (-not $gistId) { $gistId = Find-AfsSyncGist -Token $Token }
     $content = ConvertTo-AfsSyncPayload
     if ($gistId) {
-        Invoke-AfsGitHubApi -Method 'PATCH' -Path ('/gists/' + $gistId) -Token $Token -Body
-            (@{ files = @{ $script:AFS_GIST_FILE = @{ content = $content } } } | ConvertTo-Json -Depth 8)
+        $body = @{ files = @{ $script:AFS_GIST_FILE = @{ content = $content } } } | ConvertTo-Json -Depth 8
+        Invoke-AfsGitHubApi -Method 'PATCH' -Path ('/gists/' + $gistId) -Token $Token -Body $body
     } else {
-        $new = Invoke-AfsGitHubApi -Method 'POST' -Path '/gists' -Token $Token -Body
-            (@{
-                description = $script:AFS_GIST_DESC
-                public      = $false
-                files       = @{ $script:AFS_GIST_FILE = @{ content = $content } }
-            } | ConvertTo-Json -Depth 8)
+        $body = @{
+            description = $script:AFS_GIST_DESC
+            public      = $false
+            files       = @{ $script:AFS_GIST_FILE = @{ content = $content } }
+        } | ConvertTo-Json -Depth 8
+        $new = Invoke-AfsGitHubApi -Method 'POST' -Path '/gists' -Token $Token -Body $body
         $gistId = $new.id
     }
     $state.gistId = $gistId
