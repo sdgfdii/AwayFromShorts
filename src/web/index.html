@@ -580,7 +580,7 @@ function renderSchedule() {
 
 function presetState(preset, list) {
   const all = preset.domains ? preset.domains : preset.names;
-  const n = all.filter(d => list.includes(d.toLowerCase ? d.toLowerCase() : d)).length;
+  const n = all.filter(d => list.some(x => String(x).toLowerCase() === String(d).toLowerCase())).length;
   return { checked: n === all.length, mixed: n > 0 && n < all.length };
 }
 
@@ -721,10 +721,13 @@ $("#procPresets").addEventListener("click", e => {
   if (!el) return;
   const p = PROC_PRESETS.find(x => x.label === el.dataset.preset);
   const all = p.names;
-  const present = all.filter(d => cfg.blockedProcesses.includes(d));
-  if (present.length === all.length) cfg.blockedProcesses = cfg.blockedProcesses.filter(d => !all.includes(d));
-  else cfg.blockedProcesses = [...new Set([...cfg.blockedProcesses, ...all.filter(d => !cfg.blockedProcesses.includes(d))])];
-  renderProcesses(); markDirty();
+  const hasItem = d => cfg.blockedProcesses.some(x => String(x).toLowerCase() === String(d).toLowerCase());
+  const present = all.filter(d => hasItem(d));
+  if (present.length === all.length) {
+    cfg.blockedProcesses = cfg.blockedProcesses.filter(x => !all.some(d => String(x).toLowerCase() === String(d).toLowerCase()));
+  } else {
+    cfg.blockedProcesses = [...new Set([...cfg.blockedProcesses, ...all.filter(d => !hasItem(d))])];
+  }
 });
 $("#addProcBtn").addEventListener("click", () => addItem("#procInput", v => cfg.blockedProcesses, "proc"));
 $("#procInput").addEventListener("keydown", e => { if (e.key === "Enter") $("#addProcBtn").click(); });

@@ -1,8 +1,8 @@
 ﻿# ============================================================
 #  build-release.ps1 — 打包懒人包 ZIP (install.bat + src + 文档)
-#  用法: powershell -File build-release.ps1 [-Version 1.1.2]
+#  用法: powershell -File build-release.ps1 [-Version 1.1.3]
 # ============================================================
-param([string]$Version = '1.1.2')
+param([string]$Version = '1.1.3')
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot          # 项目根

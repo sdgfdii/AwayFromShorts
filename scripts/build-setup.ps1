@@ -1,9 +1,9 @@
 ﻿# ============================================================
 #  build-setup.ps1 — 生成单文件 EXE 安装器(内嵌懒人包 zip)
 #  产物: dist\AwayFromShorts-Setup-<version>.exe
-#  用法: powershell -File scripts\build-setup.ps1 -Version 1.1.2
+#  用法: powershell -File scripts\build-setup.ps1 -Version 1.1.3
 # ============================================================
-param([string]$Version = '1.1.2')
+param([string]$Version = '1.1.3')
 
 $ErrorActionPreference = 'Stop'
 $root   = Split-Path $PSScriptRoot
