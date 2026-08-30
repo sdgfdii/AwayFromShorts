@@ -728,6 +728,7 @@ $("#procPresets").addEventListener("click", e => {
   } else {
     cfg.blockedProcesses = [...new Set([...cfg.blockedProcesses, ...all.filter(d => !hasItem(d))])];
   }
+  renderProcesses(); markDirty();
 });
 $("#addProcBtn").addEventListener("click", () => addItem("#procInput", v => cfg.blockedProcesses, "proc"));
 $("#procInput").addEventListener("keydown", e => { if (e.key === "Enter") $("#addProcBtn").click(); });
