@@ -287,18 +287,15 @@ $handler = {
 
 # ---------------- 主循环 ----------------
 
+# 幂等启动: 端口被占用说明面板已在运行(如开机自启重复触发),直接退出,不绑定其它端口
 $listener = $null
-$bound = $false
-for ($try = 0; $try -lt 10 -and -not $bound; $try++) {
-    $p = $Port + $try
-    try {
-        $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, $p)
-        $listener.Start()
-        $bound = $true
-        $Port = $p
-    } catch { $listener = $null }
+try {
+    $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, $Port)
+    $listener.Start()
+} catch {
+    Write-Output "AwayFromShorts 配置面板已在运行(端口 $Port 被占用),无需重复启动"
+    exit 0
 }
-if (-not $bound) { throw "无法绑定端口 $Port ~ $($Port + 9)" }
 
 Write-Output "AwayFromShorts 配置面板已启动: http://127.0.0.1:$Port/  (Ctrl+C 停止)"
 

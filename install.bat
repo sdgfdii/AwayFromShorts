@@ -51,9 +51,7 @@ echo [5/5] 立即执行一次屏蔽检查
 powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%APP%\src\awayfromshorts.ps1"
 
 echo [6/6] 启动可视化配置面板
-start "" powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%APP%\src\webui.ps1"
-timeout /t 1 /nobreak >nul
-start "" "http://127.0.0.1:8737"
+call "%APP%\start-web.bat"
 
 echo.
 echo 安装完成!配置面板已打开: http://127.0.0.1:8737

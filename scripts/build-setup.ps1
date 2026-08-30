@@ -1,9 +1,9 @@
 ﻿# ============================================================
 #  build-setup.ps1 — 生成单文件 EXE 安装器(内嵌懒人包 zip)
 #  产物: dist\AwayFromShorts-Setup-<version>.exe
-#  用法: powershell -File scripts\build-setup.ps1 -Version 1.0.1
+#  用法: powershell -File scripts\build-setup.ps1 -Version 1.1.2
 # ============================================================
-param([string]$Version = '1.0.1')
+param([string]$Version = '1.1.2')
 
 $ErrorActionPreference = 'Stop'
 $root   = Split-Path $PSScriptRoot
@@ -84,8 +84,20 @@ __B64__;
                     WindowStyle = ProcessWindowStyle.Hidden,
                     CreateNoWindow = true
                 });
-                System.Threading.Thread.Sleep(1500);
-                Process.Start("http://127.0.0.1:8737");
+                // 等面板端口就绪再打开浏览器(避免"无法访问此页面")
+                bool up = false;
+                for (int i = 0; i < 60; i++) {
+                    try {
+                        using (System.Net.Sockets.TcpClient c = new System.Net.Sockets.TcpClient()) {
+                            c.Connect("127.0.0.1", 8737);
+                            up = true;
+                            break;
+                        }
+                    } catch {
+                        System.Threading.Thread.Sleep(250);
+                    }
+                }
+                if (up) { Process.Start("http://127.0.0.1:8737"); }
 
                 MessageBox.Show("AwayFromShorts 安装完成!\n\n" +
                     "配置面板已打开: http://127.0.0.1:8737\n" +
@@ -152,6 +164,7 @@ $manifestPath = Join-Path $env:TEMP 'afs-setup.manifest'
 # ---------- 4. 编译 ----------
 $csc = 'C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 $refs = @(
+    'System.dll',
     'System.IO.Compression.FileSystem.dll',
     'System.Windows.Forms.dll',
     'System.Drawing.dll'
