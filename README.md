@@ -1,4 +1,4 @@
-﻿# AwayFromShorts 🚫📱
+# AwayFromShorts 🚫📱
 
 > 远离短视频成瘾 —— 在指定时间屏蔽网站和程序,并提供一个可视化网页随时调整规则。
 
@@ -24,7 +24,7 @@
 
 **最简单: 下载单文件 EXE,双击,点一下 UAC「是」,完事。** 不需要解压、不需要命令行:
 
-- 到 [Releases](https://github.com/sdgfdii/AwayFromShorts/releases) 下载 `AwayFromShorts-Setup-1.2.6.exe`
+- 到 [Releases](https://github.com/sdgfdii/AwayFromShorts/releases) 下载 `AwayFromShorts-Setup-1.2.7.exe`
 - 双击运行 → 弹 UAC 请求管理员权限 → 自动: 解压内置包 → 安装到 `%LOCALAPPDATA%\AwayFromShorts` → 备份 hosts → 注册计划任务(每分钟,最高权限,**不登录也运行**)→ **设置开机自启**(登录自动启动面板,不闪窗口)→ 立即执行一次 → 打开配置面板
 - 完成弹窗提示安装成功,浏览器自动打开 **http://127.0.0.1:8737**
 
@@ -92,7 +92,6 @@ irm https://raw.githubusercontent.com/sdgfdii/AwayFromShorts/main/install.ps1 | 
 ```
 
 - **网站屏蔽**: 屏蔽期间向 `C:\Windows\System32\drivers\etc\hosts` 写入 `0.0.0.0 域名`,浏览器直接无法解析;解除时只删除本程序写入的标记块,不动你的其他 hosts 配置(安装时会先备份)。
-- **Clash 接管**: 屏蔽期间自动**关闭 Windows 系统代理 + 禁用 Clash TUN 虚拟网卡**,防止流量走代理绕过 hosts 屏蔽;屏蔽结束(或手动解除)后,按屏蔽前记录的原状态**自动恢复系统代理并重新启用 TUN**。Clash 配置可通过 `config.json` 的 `clash` 块调整(`tunAdapter` 默认 `Meta`,找不到时自动探测)。**如果屏蔽时段还需要联网工作(如 Codex 写代码),可在面板「屏蔽网站」页关闭「屏蔽时接管 Clash」开关**(即 `clash.enabled: false`)——屏蔽照常进行,但系统代理和 TUN 保持开启(网站屏蔽可能被代理绕过)。
 - **进程屏蔽**: `Stop-Process` 强制结束,计划任务每分钟复查一次,所以"关掉又打开"也没用。
 - **强制模式**: 开启后仅在屏蔽计划时段内生效——时段内无法关闭屏蔽或临时解除(计划任务每分钟兜底校验,手改 `config.json` 删 force 也会在 1 分钟内被恢复);时段外不强制,正常使用。
 - **浏览器窗口屏蔽**: 屏蔽时通过交互计划任务优雅关闭标题匹配的浏览器窗口(如 Edge 的「娱乐」工作区),其他窗口/工作区不受影响,反复打开会被反复关闭。可选「同时拦截娱乐网站」(URLBlocklist 注册表策略): 在浏览器**导航层**拦截屏蔽列表中的域名,与代理/DNS 无关无法绕过,需重启浏览器一次生效。

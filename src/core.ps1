@@ -5,7 +5,7 @@
 # ============================================================
 
 $script:AFS_NAME        = 'AwayFromShorts'
-$script:AFS_VERSION     = '1.2.6'
+$script:AFS_VERSION     = '1.2.7'
 $script:AFS_MARK_START  = "# >>> $($script:AFS_NAME) >>> (managed by AwayFromShorts - do not edit)"
 $script:AFS_MARK_END    = "# <<< $($script:AFS_NAME) <<<"
 # 这些进程永远不杀,防止把系统/本工具自己弄死
@@ -50,12 +50,7 @@ function Get-AfsDefaultConfig {
         override = @{ mode = 'none'; until = $null }
         force = @{ enabled = $false; until = $null }   # 强制模式: 一旦开启, 当天 24:00 前无法关闭/解除屏蔽
         web = @{ port = 8737 }
-        clash = @{
-            enabled      = $true   # 屏蔽时接管 Clash: 关系统代理 + 禁 TUN
-            systemProxy  = $true   # 关/恢复 Windows 系统代理
-            tun          = $true   # 禁/启 TUN 虚拟网卡
-            tunAdapter   = 'Meta'  # TUN 网卡名 (Clash Verge Rev 默认 'Meta', 找不到则自动探测)
-        }
+
         browser = @{
             enabled  = $true    # 屏蔽时优雅关闭标题匹配的浏览器窗口(工作区), 其他窗口不受影响
             windows  = @()      # 窗口标题列表(支持 * 通配符), 例如 '娱乐'
@@ -134,6 +129,7 @@ function Normalize-AfsList {
 function Set-AfsConfigSafe {
     param($InputConfig)
     $cfg = Merge-AfsDeep -Base (Get-AfsDefaultConfig) -Overlay $InputConfig
+$null = $cfg.Remove('clash')   # Clash 接管功能已移除 (v1.2.7): 清理旧配置残留
     $cfg.enabled = [bool]$cfg.enabled
 
     $cfg.schedule.days = @(Normalize-AfsList $cfg.schedule.days | ForEach-Object { try { [int]$_ } catch { 0 } } |
@@ -421,111 +417,6 @@ function Set-AfsLog {
     Write-AfsJson -Path $Path -Object $Log
 }
 
-# ---------- Clash 代理/TUN 控制 ----------
-# 屏蔽时: 关系统代理 + 禁 TUN 网卡, 防止流量走 Clash 绕过 hosts 屏蔽
-# 解除时: 按屏蔽前记录的原状态恢复
-
-$script:AFS_CLASH_STATE = 'clash-state.json'
-
-function Get-AfsClashStatePath {
-    (Join-Path (Split-Path (Get-AfsConfigPath)) $script:AFS_CLASH_STATE)
-}
-
-function Read-AfsClashState {
-    $p = Get-AfsClashStatePath
-    if (Test-Path $p) {
-        try { Read-AfsJson -Path $p } catch { $null }
-    } else { $null }
-}
-
-function Save-AfsClashState {
-    param($State)
-    Write-AfsJson -Path (Get-AfsClashStatePath) -Object $State
-}
-
-function Remove-AfsClashState {
-    $p = Get-AfsClashStatePath
-    if (Test-Path $p) { Remove-Item $p -Force -ErrorAction SilentlyContinue }
-}
-
-# 读 Windows 系统代理当前状态 (注册表 WinINET)
-function Get-AfsSystemProxyState {
-    $key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings'
-    $v = Get-ItemProperty -Path $key -ErrorAction SilentlyContinue
-    @{
-        enabled = ([int]$v.ProxyEnable -eq 1)
-        server  = [string]$v.ProxyServer
-    }
-}
-
-function Set-AfsSystemProxyEnabled {
-    param([bool]$Enabled, [string]$Server)
-    $key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings'
-    try {
-        Set-ItemProperty -Path $key -Name ProxyEnable -Value ([int]$Enabled) -ErrorAction Stop
-        if ($Enabled -and $Server) { Set-ItemProperty -Path $key -Name ProxyServer -Value $Server -ErrorAction Stop }
-    } catch {
-        Write-Warning "设置系统代理失败: $($_.Exception.Message)"
-    }
-}
-
-# 探测 TUN 网卡: 优先用配置名, 找不到就按特征匹配
-function Find-AfsTunAdapter {
-    param([string]$Preferred)
-    if ($Preferred) {
-        $a = Get-NetAdapter -Name $Preferred -IncludeHidden -ErrorAction SilentlyContinue
-        if ($a) { return $a }
-    }
-    Get-NetAdapter -IncludeHidden -ErrorAction SilentlyContinue |
-        Where-Object { ($_.Name -match 'meta|clash|mihomo|verge') -or ($_.InterfaceDescription -match 'wintun|tunnel') } |
-        Select-Object -First 1
-}
-
-# 屏蔽时: 记录原状态 + 关闭系统代理和 TUN (幂等: 已关则跳过)
-function Invoke-AfsClashOff {
-    param($Config, [switch]$Simulate)
-    if (-not $Config.clash.enabled) { return }
-    $state = Read-AfsClashState
-    if (-not $state) {
-        $sp = Get-AfsSystemProxyState
-        $ad = Find-AfsTunAdapter -Preferred $Config.clash.tunAdapter
-        $state = @{
-            proxyEnabled = $sp.enabled
-            proxyServer  = $sp.server
-            tunWasUp     = [bool]($ad -and $ad.Status -eq 'Up')
-            tunAdapter   = if ($ad) { $ad.Name } else { $null }
-        }
-        if (-not $Simulate) { Save-AfsClashState -State $state }
-    }
-    if ($Simulate) { Write-Output '[simulate] clash-off: 关系统代理 + 禁 TUN'; return }
-    if ($Config.clash.systemProxy) { Set-AfsSystemProxyEnabled -Enabled $false }
-    if ($Config.clash.tun -and $state.tunAdapter) {
-        try {
-            $a = Get-NetAdapter -Name $state.tunAdapter -IncludeHidden -ErrorAction SilentlyContinue
-            if ($a -and $a.Status -eq 'Up') { Disable-NetAdapter -Name $state.tunAdapter -Confirm:$false -ErrorAction Stop }
-        } catch { Write-Warning "禁用 TUN 网卡 $($state.tunAdapter) 失败: $($_.Exception.Message)" }
-    }
-}
-
-# 解除时: 按记录恢复系统代理和 TUN, 然后清理状态文件
-function Invoke-AfsClashRestore {
-    param($Config, [switch]$Simulate)
-    if (-not $Config.clash.enabled) { return }
-    $state = Read-AfsClashState
-    if (-not $state) { return }
-    if ($Simulate) { Write-Output '[simulate] clash-restore: 恢复系统代理 + 启 TUN'; return }
-    if ($Config.clash.systemProxy) {
-        Set-AfsSystemProxyEnabled -Enabled ([bool]$state.proxyEnabled) -Server ([string]$state.proxyServer)
-    }
-    if ($Config.clash.tun -and $state.tunAdapter) {
-        try {
-            $a = Get-NetAdapter -Name $state.tunAdapter -IncludeHidden -ErrorAction SilentlyContinue
-            if ($a -and $a.Status -ne 'Up') { Enable-NetAdapter -Name $state.tunAdapter -Confirm:$false -ErrorAction Stop }
-        } catch { Write-Warning "启用 TUN 网卡 $($state.tunAdapter) 失败: $($_.Exception.Message)" }
-    }
-    Remove-AfsClashState
-}
-
 # ---------- 浏览器窗口(工作区)屏蔽 ----------
 # 屏蔽时优雅关闭标题匹配的浏览器窗口(例如 Edge 的"娱乐"工作区), 其他窗口/工作区不受影响。
 # 关闭动作必须跑在用户交互会话里(S4U 计划任务无法操作桌面窗口),
@@ -715,8 +606,7 @@ function Invoke-AfsEnforce {
                 }
                 $log.killed = @($killed | Select-Object -Unique)
             }
-            # 屏蔽时段: 关 Clash 系统代理 + TUN (防绕过 hosts)
-            if ($Simulate) { Invoke-AfsClashOff -Config $Config -Simulate } else { Invoke-AfsClashOff -Config $Config }
+
             # 浏览器窗口(工作区)屏蔽: 每分钟触发关闭匹配窗口 (用户重开也会再关)
             if (-not $Simulate -and ($Config.browser.enabled -or $Config.browser.urlBlock)) {
                 Invoke-AfsBrowserWindowClose -Config $Config
@@ -750,8 +640,7 @@ function Invoke-AfsEnforce {
                 Remove-AfsHostsBlock -Path $HostsPath
                 $log.hosts = 'clean'
             }
-            # 解除屏蔽: 恢复 Clash 原状态
-            if ($Simulate) { Invoke-AfsClashRestore -Config $Config -Simulate } else { Invoke-AfsClashRestore -Config $Config }
+
             # 解除: 移除 URL 拦截策略并重启浏览器恢复; 停止窗口关闭
             $bState = Read-AfsBrowserState
             if ($bState.applied) {
