@@ -160,6 +160,11 @@
   }
   .note.warn { background: rgba(255,171,61,.08); border-color: rgba(255,171,61,.3); color: #e8d2ac; }
   .note.danger { background: rgba(255,93,93,.08); border-color: rgba(255,93,93,.3); color: #e8b9b9; }
+  .red-note { background: rgba(255,93,93,.1); border: 1px solid rgba(255,93,93,.4);
+    border-radius: 9px; padding: 10px 13px; font-size: 12.5px; color: #f0c4c4; margin-top: 12px; line-height: 1.6; }
+  button.btn.danger { background: #b33; border-color: #d55; }
+  button.btn.danger:hover { background: #c44; }
+  button.btn:disabled { opacity: .45; cursor: not-allowed; }
 
   details.tip { margin-top: 12px; }
   details.tip summary { cursor: pointer; color: var(--accent); font-size: 13px; margin-bottom: 6px; }
@@ -267,6 +272,10 @@
 
     <!-- ============ 计划 ============ -->
     <section class="panel" id="panel-schedule">
+      <div class="card" id="forceCard">
+        <h3>🔒 强制模式</h3>
+        <div id="forceArea"></div>
+      </div>
       <div class="card">
         <h3>📅 屏蔽日期</h3>
         <div class="chips" id="dayChips"></div>
@@ -515,6 +524,7 @@ function renderAll() {
   renderTop();
   renderStatus();
   renderSchedule();
+  renderForce();
   renderSites();
   renderProcesses();
   renderWhitelist();
@@ -533,6 +543,7 @@ const REASON_TEXT = {
   schedule: "计划时段内",
   "override-block": "临时屏蔽中",
   "override-off": "临时解除中",
+  force: "强制模式生效中(本日无法关闭)",
   disabled: "总开关已关闭",
   day: "今天不在计划日期",
   time: "不在计划时段",
@@ -560,6 +571,17 @@ function renderStatus() {
   $("#stNext").textContent = status.nextActive || (status.active ? "当前正在屏蔽" : "未设置计划");
   const lr = status.lastRun;
   $("#stLast").textContent = lr && lr.time ? lr.time + (lr.error ? " (出错: " + lr.error + ")" : "") : "尚无记录";
+
+  // 强制模式生效时, 解除类操作全部禁用 (服务端也会拦截, 这里只是前置禁用)
+  const forced = status.activeReason === "force";
+  ["unblockBtn", "clearOverrideBtn"].forEach(id => {
+    const el = $("#" + id);
+    el.disabled = forced;
+    el.title = forced ? "强制模式生效中, 本日无法解除" : "";
+  });
+  const enSw = $("#enabledSwitch");
+  enSw.disabled = forced;
+  enSw.title = forced ? "强制模式生效中, 本日无法关闭屏蔽" : "";
 }
 
 function renderSchedule() {
@@ -576,6 +598,36 @@ function renderSchedule() {
        <button class="btn small red del-window" data-i="${i}">删除</button>
      </div>`).join("");
   if (!ws.length) cfg.schedule.windows = [{ start: "19:00", end: "22:00" }];
+}
+
+function renderForce() {
+  const f = cfg.force || {};
+  const fa = $("#forceArea");
+  if (f.enabled && f.until) {
+    const until = new Date(f.until);
+    const ms = until - Date.now();
+    if (ms > 0) {
+      const h = Math.floor(ms / 3600000), m = Math.floor(ms % 3600000 / 60000);
+      fa.innerHTML =
+        `<div class="note red-note">🔒 <b>强制模式生效中</b> — ${h} 小时 ${m} 分钟后(约 ${until.toLocaleString()})自动解除。<br>生效期间<b>无法关闭屏蔽、无法临时解除</b>, 修改屏蔽计划也不会生效。</div>` +
+        `<button class="btn danger" id="forceOffBtn">本日强制, 无法关闭</button>`;
+      const off = $("#forceOffBtn");
+      if (off) off.addEventListener("click", () => toast("强制模式生效中, 本日无法关闭屏蔽", "err"));
+      return;
+    }
+  }
+  fa.innerHTML =
+    `<div class="hint">开启后<b>当天 24:00 前无法关闭屏蔽或临时解除</b>, 用于管不住自己的时候。强制模式由计划任务每分钟兜底校验, 手动改配置文件也无法绕过(1 分钟内会被恢复)。</div>` +
+    `<button class="btn danger" id="forceOnBtn">🔒 开启强制模式(本日无法关闭)</button>`;
+  const on = $("#forceOnBtn");
+  if (on) on.addEventListener("click", async () => {
+    if (!confirm("确定开启强制模式?\n\n开启后直到今天 24:00 都无法:\n• 关闭屏蔽(总开关)\n• 临时解除 / 清除临时设置\n• 通过修改计划绕过\n\n建议先把屏蔽计划、网站、进程配置好再开启。")) return;
+    try {
+      const r = await api("/api/force", "POST", { enabled: true });
+      toast(r.note || "强制模式已开启", "ok");
+      await load();
+    } catch (e) { toast(e.message, "err"); }
+  });
 }
 
 function presetState(preset, list) {

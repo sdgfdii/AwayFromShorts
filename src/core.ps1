@@ -5,7 +5,7 @@
 # ============================================================
 
 $script:AFS_NAME        = 'AwayFromShorts'
-$script:AFS_VERSION     = '1.1.4'
+$script:AFS_VERSION     = '1.1.5'
 $script:AFS_MARK_START  = "# >>> $($script:AFS_NAME) >>> (managed by AwayFromShorts - do not edit)"
 $script:AFS_MARK_END    = "# <<< $($script:AFS_NAME) <<<"
 # 这些进程永远不杀,防止把系统/本工具自己弄死
@@ -48,6 +48,7 @@ function Get-AfsDefaultConfig {
         blockedProcesses = @('chrome','msedge')
         whitelist = @{ sites = @(); processes = @() }
         override = @{ mode = 'none'; until = $null }
+        force = @{ enabled = $false; until = $null }   # 强制模式: 一旦开启, 当天 24:00 前无法关闭/解除屏蔽
         web = @{ port = 8737 }
         clash = @{
             enabled      = $true   # 屏蔽时接管 Clash: 关系统代理 + 禁 TUN
@@ -157,11 +158,66 @@ function Set-AfsConfigSafe {
     if ($cfg.override.mode -notin @('none','block','off')) { $cfg.override.mode = 'none' }
     if (-not $cfg.override.until) { $cfg.override.until = $null }
 
+    # 强制模式: 以独立状态文件为准, 防止 config 被外部改坏后破戒
+    $forceNow = Test-AfsForceActive -Config $cfg
+    if ($forceNow.active) {
+        $cfg.force.enabled = $true
+        $cfg.force.until  = $forceNow.until.ToString('o')
+    } else {
+        $cfg.force.enabled = $false
+        $cfg.force.until  = $null
+    }
+
     try { $cfg.web.port = [int]$cfg.web.port } catch { $cfg.web.port = 8737 }
     if ($cfg.web.port -lt 1 -or $cfg.web.port -gt 65535) { $cfg.web.port = 8737 }
 
     Write-AfsJson -Path (Get-AfsConfigPath) -Object $cfg
     $cfg
+}
+
+# ---------- 强制模式 ----------
+# 强制模式 = config.force 与独立状态文件 force-state.json 双保险:
+# 计划任务(enforcer)每分钟兜底: 任一来源生效则强制屏蔽, 并把另一来源修复一致;
+# 直接手改 config.json 删掉 force 也破不了戒(1 分钟内被 enforcer 恢复)。
+
+function Get-AfsForceStatePath {
+    (Join-Path (Split-Path (Get-AfsConfigPath)) 'force-state.json')
+}
+
+function Read-AfsForceState {
+    $p = Get-AfsForceStatePath
+    if (-not (Test-Path $p)) { return $null }
+    try {
+        ConvertTo-AfsHashtable (ConvertFrom-Json ([System.IO.File]::ReadAllText($p, [System.Text.Encoding]::UTF8)))
+    } catch { $null }
+}
+
+function Save-AfsForceState {
+    param([string]$Until)
+    $utf8 = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText((Get-AfsForceStatePath), (ConvertTo-Json @{ until = $Until }), $utf8)
+}
+
+function Remove-AfsForceState {
+    $p = Get-AfsForceStatePath
+    if (Test-Path $p) { Remove-Item $p -Force -ErrorAction SilentlyContinue }
+}
+
+# 返回 @{ active=$bool; until=$datetime|null } — 任一来源在有效期内即视为生效
+function Test-AfsForceActive {
+    param($Config)
+    $until = $null
+    if ($Config.force.enabled -and $Config.force.until) {
+        $t = [datetime]::MinValue
+        if ([datetime]::TryParse([string]$Config.force.until, [ref]$t)) { if ($null -eq $until -or $t -gt $until) { $until = $t } }
+    }
+    $st = Read-AfsForceState
+    if ($st -and $st.until) {
+        $t = [datetime]::MinValue
+        if ([datetime]::TryParse([string]$st.until, [ref]$t)) { if ($null -eq $until -or $t -gt $until) { $until = $t } }
+    }
+    if ($until -and (Get-Date) -lt $until) { return @{ active = $true; until = $until } }
+    @{ active = $false; until = $null }
 }
 
 # ---------- 计划判定 ----------
@@ -183,6 +239,10 @@ function Test-AfsInWindow {
 
 function Get-AfsActiveState {
     param($Config, [datetime]$Now = (Get-Date))
+    # 强制模式最高优先级: 生效期间无论如何都屏蔽 (压过 enabled/override/schedule)
+    $force = Test-AfsForceActive -Config $Config
+    if ($force.active) { return @{ active = $true; reason = 'force' } }
+
     if (-not $Config.enabled) { return @{ active = $false; reason = 'disabled' } }
 
     $ov = $Config.override
@@ -212,6 +272,7 @@ function Get-AfsActiveState {
 # 下一个屏蔽开始时间 (当前不在屏蔽中时调用); 当前屏蔽中返回 $null
 function Get-AfsNextActiveTime {
     param($Config, [datetime]$Now = (Get-Date))
+    if ((Get-AfsActiveState -Config $Config -Now $Now).active) { return $null }
     for ($d = 0; $d -le 8; $d++) {
         $day = $Now.AddDays($d)
         $dayNum = [int]$day.DayOfWeek
@@ -443,6 +504,29 @@ function Invoke-AfsEnforce {
     )
     $state  = Get-AfsActiveState -Config $Config
     $active = $state.active
+    # ---- 强制模式兜底: config 与独立状态文件互相校验, 防手改 json 破戒 ----
+    $forceNow = Test-AfsForceActive -Config $Config
+    if ($forceNow.active) {
+        $needFix = -not ($Config.force.enabled -and $Config.force.until)
+        if ($needFix) {
+            $Config.force.enabled = $true
+            $Config.force.until  = $forceNow.until.ToString('o')
+        }
+        if (-not (Test-Path (Get-AfsForceStatePath))) {
+            Save-AfsForceState -Until $forceNow.until.ToString('o')
+        }
+        if ($needFix -and -not $Simulate) { Set-AfsConfigSafe -InputConfig $Config | Out-Null }
+    } else {
+        # 已过期或未启用: 清理残留
+        if ($Config.force.enabled -or (Test-Path (Get-AfsForceStatePath))) {
+            $Config.force.enabled = $false
+            $Config.force.until  = $null
+            if (-not $Simulate) {
+                Set-AfsConfigSafe -InputConfig $Config | Out-Null
+                Remove-AfsForceState
+            }
+        }
+    }
     $log = @{
         time   = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
         active = $active

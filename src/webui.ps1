@@ -139,11 +139,49 @@ $handler = {
         if ($method -eq 'POST' -and $path -eq '/api/config') {
             try {
                 $o = $body | ConvertFrom-Json -ErrorAction Stop
-                $newCfg = Set-AfsConfigSafe -InputConfig (ConvertTo-AfsHashtable $o)
+                $inCfg = ConvertTo-AfsHashtable $o
+                $forceNow = Test-AfsForceActive -Config (Get-AfsConfig)
+                if ($forceNow.active -and -not [bool]$inCfg.enabled) {
+                    throw "强制模式生效中 ($($forceNow.until.ToString('yyyy-MM-dd HH:mm')) 前), 本日无法关闭屏蔽"
+                }
+                $newCfg = Set-AfsConfigSafe -InputConfig $inCfg
                 Send-AfsJson -Stream $stream -Status 200 -Obj @{
                     ok = $true
                     note = '已保存, 屏蔽引擎将在 1 分钟内应用'
                     config = $newCfg
+                }
+            } catch {
+                Send-AfsJson -Stream $stream -Status 400 -Obj @{ ok = $false; error = $_.Exception.Message }
+            }
+            return
+        }
+        if ($method -eq 'POST' -and $path -eq '/api/force') {
+            try {
+                $o = $body | ConvertFrom-Json -ErrorAction Stop
+                $enable = [bool]$o.enabled
+                $c = Get-AfsConfig
+                if ($enable) {
+                    # 生效到当天 24:00 (23:59:59)
+                    $until = (Get-Date).Date.AddDays(1).AddSeconds(-1)
+                    Save-AfsForceState -Until $until.ToString('o')
+                    $c.force.enabled = $true
+                    $c.force.until  = $until.ToString('o')
+                    Set-AfsConfigSafe -InputConfig $c | Out-Null
+                    Send-AfsJson -Stream $stream -Status 200 -Obj @{
+                        ok = $true
+                        until = $until.ToString('o')
+                        note = "强制模式已开启: $($until.ToString('yyyy-MM-dd HH:mm')) 前无法关闭/解除屏蔽"
+                    }
+                } else {
+                    $forceNow = Test-AfsForceActive -Config $c
+                    if ($forceNow.active) {
+                        throw "强制模式生效中 ($($forceNow.until.ToString('yyyy-MM-dd HH:mm')) 前), 本日无法关闭屏蔽"
+                    }
+                    $c.force.enabled = $false
+                    $c.force.until  = $null
+                    Set-AfsConfigSafe -InputConfig $c | Out-Null
+                    Remove-AfsForceState
+                    Send-AfsJson -Stream $stream -Status 200 -Obj @{ ok = $true; note = '强制模式未生效或已过期, 已清理' }
                 }
             } catch {
                 Send-AfsJson -Stream $stream -Status 400 -Obj @{ ok = $false; error = $_.Exception.Message }
@@ -173,6 +211,10 @@ $handler = {
                 $minutes = try { [int]$o.minutes } catch { 30 }
                 if ($mode -notin @('none','block','off')) { throw 'mode 必须为 none/block/off' }
                 $c = Get-AfsConfig
+                $forceNow = Test-AfsForceActive -Config $c
+                if ($forceNow.active -and $mode -in @('off','none')) {
+                    throw "强制模式生效中 ($($forceNow.until.ToString('yyyy-MM-dd HH:mm')) 前), 本日无法解除屏蔽"
+                }
                 if ($mode -eq 'none') {
                     $c.override.mode = 'none'; $c.override.until = $null
                 } else {
