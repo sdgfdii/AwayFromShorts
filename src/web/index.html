@@ -312,14 +312,14 @@
         <div class="switch-row">
           <div class="lbl">
             <label class="switch"><input type="checkbox" id="browserSwitch"><span class="slider"></span></label>
-            <b>屏蔽浏览器特定窗口(工作区)</b>
+            <b>屏蔽 Edge 工作区(如娱乐)</b>
           </div>
         </div>
-        <div class="hint">屏蔽期间,标题匹配的浏览器窗口会被<b>自动优雅关闭</b>(反复打开也会再被关闭),其他窗口/工作区不受影响。适合"只屏蔽娱乐工作区、工作窗口照常使用"。</div>
+        <div class="hint">Edge 工作区窗口的<b>标题就是工作区名</b>,填入工作区名(如"娱乐")即可屏蔽整个工作区:屏蔽期间该工作区的窗口会被<b>自动优雅关闭</b>(反复打开也会再被关闭),其他窗口 / 工作区完全不受影响,可正常学习工作。点"检测工作区窗口"可列出当前打开的 Edge 窗口标题,直接选中即加入。</div>
         <div class="add-row">
-          <input id="browserWinInput" placeholder="窗口标题, 支持 * 通配符, 例如: 娱乐" spellcheck="false">
+          <input id="browserWinInput" placeholder="工作区名, 支持 * 通配符, 例如: 娱乐" spellcheck="false">
           <button class="btn" id="addBrowserWinBtn">添加</button>
-          <button class="btn" id="scanWinBtn">🪟 检测当前窗口</button>
+          <button class="btn" id="scanWinBtn">🔍 检测工作区窗口</button>
         </div>
         <div class="list" id="browserWinList"></div>
         <div class="switch-row" style="margin-top:12px">
