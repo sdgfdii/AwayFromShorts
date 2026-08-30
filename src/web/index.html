@@ -566,7 +566,7 @@ const REASON_TEXT = {
   schedule: "计划时段内",
   "override-block": "临时屏蔽中",
   "override-off": "临时解除中",
-  force: "强制模式生效中(本日无法关闭)",
+  force: "强制模式生效中(屏蔽时段内)",
   disabled: "总开关已关闭",
   day: "今天不在计划日期",
   time: "不在计划时段",
@@ -600,11 +600,11 @@ function renderStatus() {
   ["unblockBtn", "clearOverrideBtn"].forEach(id => {
     const el = $("#" + id);
     el.disabled = forced;
-    el.title = forced ? "强制模式生效中, 本日无法解除" : "";
+    el.title = forced ? "强制模式生效中, 屏蔽时段内无法解除" : "";
   });
   const enSw = $("#enabledSwitch");
   enSw.disabled = forced;
-  enSw.title = forced ? "强制模式生效中, 本日无法关闭屏蔽" : "";
+  enSw.title = forced ? "强制模式生效中, 屏蔽时段内无法关闭屏蔽" : "";
 }
 
 function renderSchedule() {
@@ -632,19 +632,19 @@ function renderForce() {
     if (ms > 0) {
       const h = Math.floor(ms / 3600000), m = Math.floor(ms % 3600000 / 60000);
       fa.innerHTML =
-        `<div class="note red-note">🔒 <b>强制模式生效中</b> — ${h} 小时 ${m} 分钟后(约 ${until.toLocaleString()})自动解除。<br>生效期间<b>无法关闭屏蔽、无法临时解除</b>, 修改屏蔽计划也不会生效。</div>` +
-        `<button class="btn danger" id="forceOffBtn">本日强制, 无法关闭</button>`;
+        `<div class="note red-note">🔒 <b>强制模式生效中(屏蔽时段内)</b> — 本时段内<b>无法关闭屏蔽、无法临时解除</b>。<br>${h} 小时 ${m} 分钟后(约 ${until.toLocaleString()})本日强制解除, 时段外不强制。</div>` +
+        `<button class="btn danger" id="forceOffBtn">屏蔽时段内, 无法关闭</button>`;
       const off = $("#forceOffBtn");
-      if (off) off.addEventListener("click", () => toast("强制模式生效中, 本日无法关闭屏蔽", "err"));
+      if (off) off.addEventListener("click", () => toast("强制模式生效中(屏蔽时段内), 无法关闭屏蔽", "err"));
       return;
     }
   }
   fa.innerHTML =
-    `<div class="hint">开启后<b>当天 24:00 前无法关闭屏蔽或临时解除</b>, 用于管不住自己的时候。强制模式由计划任务每分钟兜底校验, 手动改配置文件也无法绕过(1 分钟内会被恢复)。</div>` +
-    `<button class="btn danger" id="forceOnBtn">🔒 开启强制模式(本日无法关闭)</button>`;
+    `<div class="hint">开启后<b>仅在你的屏蔽计划时段内强制</b>: 时段内无法关闭屏蔽或临时解除, 时段外完全不影响使用。由计划任务每分钟兜底校验, 手动改配置文件也无法绕过(1 分钟内会被恢复)。</div>` +
+    `<button class="btn danger" id="forceOnBtn">🔒 开启强制模式(仅在屏蔽时段内)</button>`;
   const on = $("#forceOnBtn");
   if (on) on.addEventListener("click", async () => {
-    if (!confirm("确定开启强制模式?\n\n开启后直到今天 24:00 都无法:\n• 关闭屏蔽(总开关)\n• 临时解除 / 清除临时设置\n• 通过修改计划绕过\n\n建议先把屏蔽计划、网站、进程配置好再开启。")) return;
+    if (!confirm("确定开启强制模式?\n\n开启后只在你的屏蔽计划时段内生效:\n• 屏蔽时段内无法关闭屏蔽(总开关)\n• 屏蔽时段内无法临时解除 / 清除临时设置\n• 屏蔽时段外不影响正常使用\n\n建议先把屏蔽计划、网站、进程配置好再开启。")) return;
     try {
       const r = await api("/api/force", "POST", { enabled: true });
       toast(r.note || "强制模式已开启", "ok");

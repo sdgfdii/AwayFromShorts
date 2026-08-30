@@ -5,7 +5,7 @@
 # ============================================================
 
 $script:AFS_NAME        = 'AwayFromShorts'
-$script:AFS_VERSION     = '1.2.4'
+$script:AFS_VERSION     = '1.2.5'
 $script:AFS_MARK_START  = "# >>> $($script:AFS_NAME) >>> (managed by AwayFromShorts - do not edit)"
 $script:AFS_MARK_END    = "# <<< $($script:AFS_NAME) <<<"
 # 这些进程永远不杀,防止把系统/本工具自己弄死
@@ -164,14 +164,13 @@ function Set-AfsConfigSafe {
     if ($cfg.override.mode -notin @('none','block','off')) { $cfg.override.mode = 'none' }
     if (-not $cfg.override.until) { $cfg.override.until = $null }
 
-    # 强制模式: 以独立状态文件为准, 防止 config 被外部改坏后破戒
+    # 强制模式: 生效时规范化 until; 未生效时保留用户 enabled 设置 (窗口外开启的强制等下次屏蔽时段自动生效)
     $forceNow = Test-AfsForceActive -Config $cfg
     if ($forceNow.active) {
         $cfg.force.enabled = $true
         $cfg.force.until  = $forceNow.until.ToString('o')
     } else {
-        $cfg.force.enabled = $false
-        $cfg.force.until  = $null
+        $cfg.force.until = $null
     }
 
     try { $cfg.web.port = [int]$cfg.web.port } catch { $cfg.web.port = 8737 }
@@ -217,11 +216,17 @@ function Remove-AfsForceState {
     if (Test-Path $p) { Remove-Item $p -Force -ErrorAction SilentlyContinue }
 }
 
-# 返回 @{ active=$bool; until=$datetime|null } — 任一来源在有效期内即视为生效
+# 返回 @{ active=$bool; until=$datetime|null } — 仅在屏蔽计划窗口内生效 (时段外不强制)
 function Test-AfsForceActive {
-    param($Config)
+    param($Config, [datetime]$Now = (Get-Date))
+    if (-not $Config.force.enabled) { return @{ active = $false; until = $null } }
+    # 强制模式只在用户设置的屏蔽时段内生效: 时段外不强制, 可正常关闭/解除
+    if (-not (Test-AfsInScheduleWindow -Config $Config -Now $Now)) {
+        return @{ active = $false; until = $null }
+    }
+    # 窗口内: 取 config 与独立状态文件两来源较晚的 until (仅用于显示剩余时间/防手改; 不因 until 过期失效)
     $until = $null
-    if ($Config.force.enabled -and $Config.force.until) {
+    if ($Config.force.until) {
         $t = [datetime]::MinValue
         if ([datetime]::TryParse([string]$Config.force.until, [ref]$t)) { if ($null -eq $until -or $t -gt $until) { $until = $t } }
     }
@@ -230,8 +235,8 @@ function Test-AfsForceActive {
         $t = [datetime]::MinValue
         if ([datetime]::TryParse([string]$st.until, [ref]$t)) { if ($null -eq $until -or $t -gt $until) { $until = $t } }
     }
-    if ($until -and (Get-Date) -lt $until) { return @{ active = $true; until = $until } }
-    @{ active = $false; until = $null }
+    if ($null -eq $until) { $until = $Now.Date.AddDays(1).AddSeconds(-1) }   # 默认当天结束, 避免 null.ToString 崩溃
+    @{ active = $true; until = $until }
 }
 
 # ---------- 计划判定 ----------
@@ -249,6 +254,19 @@ function Test-AfsInWindow {
     if ($s -eq $e) { return $false }
     if ($e -gt $s) { return ($NowMin -ge $s) -and ($NowMin -lt $e) }
     return ($NowMin -ge $s) -or ($NowMin -lt $e)
+}
+
+# 当前时间是否落在屏蔽计划窗口内 (schedule.days + windows, 支持跨午夜)
+function Test-AfsInScheduleWindow {
+    param($Config, [datetime]$Now = (Get-Date))
+    $dayNum = [int]$Now.DayOfWeek      # 0=周日
+    if ($dayNum -eq 0) { $dayNum = 7 } # 统一成 1=周一 .. 7=周日
+    if (@($Config.schedule.days) -notcontains $dayNum) { return $false }
+    $nowMin = $Now.Hour * 60 + $Now.Minute
+    foreach ($w in @($Config.schedule.windows)) {
+        if (Test-AfsInWindow -Start $w.start -End $w.end -NowMin $nowMin) { return $true }
+    }
+    $false
 }
 
 function Get-AfsActiveState {
@@ -640,9 +658,11 @@ function Invoke-AfsEnforce {
     )
     $state  = Get-AfsActiveState -Config $Config
     $active = $state.active
-    # ---- 强制模式兜底: config 与独立状态文件互相校验, 防手改 json 破戒 ----
-    $forceNow = Test-AfsForceActive -Config $Config
-    if ($forceNow.active) {
+    # ---- 强制模式兜底: 仅在屏蔽计划窗口内生效 ----
+    if (Test-AfsInScheduleWindow -Config $Config) {
+        # 窗口内: 强制必须生效, 修复 config + 独立状态文件 (防手改 json / 面板关闭破戒)
+        $forceNow = Test-AfsForceActive -Config $Config
+        if (-not $forceNow.active) { $forceNow = @{ active = $true; until = (Get-Date).Date.AddDays(1).AddSeconds(-1) } }
         $needFix = -not ($Config.force.enabled -and $Config.force.until)
         if ($needFix) {
             $Config.force.enabled = $true
@@ -653,15 +673,8 @@ function Invoke-AfsEnforce {
         }
         if ($needFix -and -not $Simulate) { Set-AfsConfigSafe -InputConfig $Config | Out-Null }
     } else {
-        # 已过期或未启用: 清理残留
-        if ($Config.force.enabled -or (Test-Path (Get-AfsForceStatePath))) {
-            $Config.force.enabled = $false
-            $Config.force.until  = $null
-            if (-not $Simulate) {
-                Set-AfsConfigSafe -InputConfig $Config | Out-Null
-                Remove-AfsForceState
-            }
-        }
+        # 窗口外: 强制不生效, 保留用户配置 (enabled 留到下个屏蔽时段自动生效), 只清过期状态文件
+        Remove-AfsForceState
     }
     $log = @{
         time   = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
