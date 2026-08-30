@@ -23,7 +23,7 @@
 
 **最简单: 下载单文件 EXE,双击,点一下 UAC「是」,完事。** 不需要解压、不需要命令行:
 
-- 到 [Releases](https://github.com/sdgfdii/AwayFromShorts/releases) 下载 `AwayFromShorts-Setup-1.2.1.exe`
+- 到 [Releases](https://github.com/sdgfdii/AwayFromShorts/releases) 下载 `AwayFromShorts-Setup-1.2.2.exe`
 - 双击运行 → 弹 UAC 请求管理员权限 → 自动: 解压内置包 → 安装到 `%LOCALAPPDATA%\AwayFromShorts` → 备份 hosts → 注册计划任务(每分钟,最高权限,**不登录也运行**)→ **设置开机自启**(登录自动启动面板,不闪窗口)→ 立即执行一次 → 打开配置面板
 - 完成弹窗提示安装成功,浏览器自动打开 **http://127.0.0.1:8737**
 
@@ -111,7 +111,8 @@ AwayFromShorts/
 └── src/
     ├── core.ps1           # 核心函数: 配置/计划/hosts/进程/浏览器窗口
     ├── awayfromshorts.ps1 # 屏蔽引擎(计划任务每分钟跑)
-    ├── close-browser-windows.ps1 # 关闭匹配的浏览器窗口(交互会话执行, 不杀进程)
+    ├── close-browser-windows.ps1
+- close-browser.vbs: 隐藏启动器(通过 wscript 运行关闭脚本, 不闪控制台窗口) # 关闭匹配的浏览器窗口(交互会话执行, 不杀进程)
     ├── register-task.ps1  # 注册计划任务(S4U: 不登录也运行, 最高权限)
     ├── webui.ps1          # 本地配置面板服务器
     ├── uninstall.ps1      # 卸载逻辑

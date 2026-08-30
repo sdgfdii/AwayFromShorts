@@ -27,6 +27,7 @@ copy /y "%SRC%src\webui.ps1"            "%APP%\src\" >nul
 copy /y "%SRC%src\uninstall.ps1"        "%APP%\src\" >nul
 copy /y "%SRC%src\register-task.ps1"    "%APP%\src\" >nul
 copy /y "%SRC%src\close-browser-windows.ps1" "%APP%\src\" >nul
+copy /y "%SRC%src\close-browser.vbs"             "%APP%\src\" >nul
 if not exist "%APP%\src\web" mkdir "%APP%\src\web"
 copy /y "%SRC%src\web\index.html"       "%APP%\src\web\" >nul
 if not exist "%APP%\src\config.json" copy /y "%SRC%src\config.example.json" "%APP%\src\config.json" >nul

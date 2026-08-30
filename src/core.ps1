@@ -5,7 +5,7 @@
 # ============================================================
 
 $script:AFS_NAME        = 'AwayFromShorts'
-$script:AFS_VERSION     = '1.2.1'
+$script:AFS_VERSION     = '1.2.2'
 $script:AFS_MARK_START  = "# >>> $($script:AFS_NAME) >>> (managed by AwayFromShorts - do not edit)"
 $script:AFS_MARK_END    = "# <<< $($script:AFS_NAME) <<<"
 # 这些进程永远不杀,防止把系统/本工具自己弄死
@@ -603,8 +603,10 @@ function Invoke-AfsBrowserWindowClose {
         restartAll = [bool]$RestartAll
     }
     Write-AfsJson -Path (Get-AfsBrowserClosePath) -Object $payload
-    $scriptPath = Join-Path (Split-Path (Get-AfsConfigPath)) 'close-browser-windows.ps1'
-    $tr = '"powershell.exe" -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + $scriptPath + '"'
+    # 用 wscript.exe + VBS 隐藏启动 (GUI 子系统, 无控制台窗口) —— 直接跑 powershell 即使 -WindowStyle Hidden
+    # 控制台分配瞬间仍会闪黑窗, 这是"每分钟闪弹窗"的根因
+    $vbsPath = Join-Path (Split-Path (Get-AfsConfigPath)) 'close-browser.vbs'
+    $tr = '"wscript.exe" "' + $vbsPath + '"'
     $tr = $tr -replace '"', '\"'
     $prev = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
