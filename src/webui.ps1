@@ -7,6 +7,25 @@
 param([int]$Port = 0)
 
 $ErrorActionPreference = 'Stop'
+
+# ---------------- 管理员权限(自我提权) ----------------
+# 面板需要管理员权限才能直接写 hosts / 管理浏览器策略 / 操作网卡等。
+# 非管理员启动时自动弹 UAC 提权重启; 用户取消则继续以当前权限运行(不退出)。
+$principal = New-Object System.Security.Principal.WindowsPrincipal([System.Security.Principal.WindowsIdentity]::GetCurrent())
+$isAdmin = $principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+if (-not $isAdmin) {
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = 'powershell.exe'
+    $psi.Arguments = '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + $MyInvocation.MyCommand.Path + '"'
+    $psi.Verb = 'runas'
+    $psi.UseShellExecute = $true
+    try {
+        [System.Diagnostics.Process]::Start($psi) | Out-Null
+        exit
+    } catch { }
+    # UAC 被取消或失败 -> 继续以当前权限运行
+}
+
 . "$PSScriptRoot\core.ps1"
 
 $cfg = Get-AfsConfig
