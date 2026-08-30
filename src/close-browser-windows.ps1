@@ -14,6 +14,8 @@ $payloadPath = Join-Path $dir 'browser-close.json'
 $logPath     = Join-Path $dir 'browser-close.log'
 $log = @{
     time     = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
+    seen     = @()
+    matched  = @()
     closed   = @()
     reopened = $false
     error    = ''
@@ -31,14 +33,40 @@ try {
     foreach ($n in $names) {
         foreach ($pr in @(Get-Process -Name $n -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowTitle })) {
             $title = [string]$pr.MainWindowTitle
+            $log.seen += "$n($($pr.Id)) [$title]"
             $match = $restartAll
             if (-not $match) {
                 foreach ($pat in $patterns) { if ($title -like $pat) { $match = $true; break } }
             }
+            if (-not $match -and $p.siteKeywords) {
+                # 兜底: 窗口标题含屏蔽站点域名关键词 (如 bilibili) —— 覆盖"工作区窗口标题被活动标签顶掉"的情况
+                $lower = $title.ToLower()
+                foreach ($kw in @($p.siteKeywords)) {
+                    if ($lower -like "*$kw*") { $match = $true; break }
+                }
+            }
             if ($match) {
+                $log.matched += "$n($($pr.Id)) [$title]"
                 try {
+                    $closeOk = $false
                     if ($pr.CloseMainWindow()) {
-                        if ($pr.WaitForExit(15000)) { $log.closed += "$n($($pr.Id)) [$title]" }
+                        if ($pr.WaitForExit(3000)) { $closeOk = $true }
+                    }
+                    if (-not $closeOk) {
+                        # 优雅关闭失败(页面 onbeforeunload 弹"确认离开?"框, 或窗口拒绝关闭) ->
+                        # 若该浏览器没有其他窗口, 则强制结束 (避免一直要用户点确认)
+                        $other = @(Get-Process -Name $n -ErrorAction SilentlyContinue |
+                            Where-Object { $_.MainWindowTitle -and $_.Id -ne $pr.Id })
+                        if ($other.Count -eq 0) {
+                            Stop-Process -Id $pr.Id -Force -ErrorAction SilentlyContinue
+                            Start-Sleep -Milliseconds 500
+                            if (-not (Get-Process -Id $pr.Id -ErrorAction SilentlyContinue)) {
+                                $log.closed += "$n($($pr.Id)) [$title] (强制)"
+                            }
+                        }
+                        # 有其他窗口(学习窗口) -> 不强制, 保护用户其他工作
+                    } else {
+                        $log.closed += "$n($($pr.Id)) [$title]"
                     }
                 } catch { }
             }

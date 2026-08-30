@@ -5,7 +5,7 @@
 # ============================================================
 
 $script:AFS_NAME        = 'AwayFromShorts'
-$script:AFS_VERSION     = '1.2.2'
+$script:AFS_VERSION     = '1.2.3'
 $script:AFS_MARK_START  = "# >>> $($script:AFS_NAME) >>> (managed by AwayFromShorts - do not edit)"
 $script:AFS_MARK_END    = "# <<< $($script:AFS_NAME) <<<"
 # 这些进程永远不杀,防止把系统/本工具自己弄死
@@ -597,10 +597,20 @@ function Remove-AfsBrowserPolicy {
 # RestartAll: 关闭所有浏览器窗口后重新打开 (URLBlocklist 变更后重启使策略生效)
 function Invoke-AfsBrowserWindowClose {
     param($Config, [switch]$RestartAll)
+    # 站点关键词: 从 blockedSites 提取主域 (bilibili.com -> bilibili), 用于按"窗口标题含娱乐站点名"兜底匹配
+    # (Edge 工作区窗口标题会随活动标签页变化, 只匹配工作区名不可靠)
+    $kws = @()
+    foreach ($s in @($Config.blockedSites)) {
+        $d = ($s -replace '^\*\.', '' -replace '^(www|m|live|mobile|amp)\.', '').ToLower()
+        $k = ($d -split '\.')[0]
+        # 只保留足够长的关键词(>=4 字符), 避免 t/v/old/b23 这类短词误伤普通窗口标题
+        if ($k -and $k.Length -ge 4) { $kws += $k }
+    }
     $payload = @{
-        patterns   = @($Config.browser.windows | Where-Object { $_ })
-        targets    = @($Config.browser.targets)
-        restartAll = [bool]$RestartAll
+        patterns     = @($Config.browser.windows | Where-Object { $_ })
+        siteKeywords = @($kws | Select-Object -Unique)
+        targets      = @($Config.browser.targets)
+        restartAll   = [bool]$RestartAll
     }
     Write-AfsJson -Path (Get-AfsBrowserClosePath) -Object $payload
     # 用 wscript.exe + VBS 隐藏启动 (GUI 子系统, 无控制台窗口) —— 直接跑 powershell 即使 -WindowStyle Hidden
