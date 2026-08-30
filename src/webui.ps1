@@ -136,6 +136,13 @@ $handler = {
             Send-AfsJson -Stream $stream -Status 200 -Obj (Get-AfsStatusObj)
             return
         }
+        if ($method -eq 'GET' -and $path -eq '/api/browser/windows') {
+            $w = @(Get-Process msedge,chrome -ErrorAction SilentlyContinue |
+                Where-Object { $_.MainWindowTitle } |
+                ForEach-Object { [string]$_.MainWindowTitle } | Select-Object -Unique)
+            Send-AfsJson -Stream $stream -Status 200 -Obj @{ ok = $true; windows = $w }
+            return
+        }
         if ($method -eq 'POST' -and $path -eq '/api/config') {
             try {
                 $o = $body | ConvertFrom-Json -ErrorAction Stop

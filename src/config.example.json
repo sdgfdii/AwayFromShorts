@@ -41,5 +41,11 @@
     "systemProxy": true,
     "tun": true,
     "tunAdapter": "Meta"
+  },
+  "browser": {
+    "enabled": true,
+    "windows": [],
+    "urlBlock": false,
+    "targets": ["edge", "chrome"]
   }
 }

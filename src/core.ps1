@@ -5,7 +5,7 @@
 # ============================================================
 
 $script:AFS_NAME        = 'AwayFromShorts'
-$script:AFS_VERSION     = '1.1.5'
+$script:AFS_VERSION     = '1.2.0'
 $script:AFS_MARK_START  = "# >>> $($script:AFS_NAME) >>> (managed by AwayFromShorts - do not edit)"
 $script:AFS_MARK_END    = "# <<< $($script:AFS_NAME) <<<"
 # 这些进程永远不杀,防止把系统/本工具自己弄死
@@ -55,6 +55,12 @@ function Get-AfsDefaultConfig {
             systemProxy  = $true   # 关/恢复 Windows 系统代理
             tun          = $true   # 禁/启 TUN 虚拟网卡
             tunAdapter   = 'Meta'  # TUN 网卡名 (Clash Verge Rev 默认 'Meta', 找不到则自动探测)
+        }
+        browser = @{
+            enabled  = $true    # 屏蔽时优雅关闭标题匹配的浏览器窗口(工作区), 其他窗口不受影响
+            windows  = @()      # 窗口标题列表(支持 * 通配符), 例如 '娱乐'
+            urlBlock = $false   # 附加: 浏览器 URLBlocklist 策略拦截 blockedSites 域名(导航层无法绕过, 需重启浏览器生效)
+            targets  = @('edge','chrome')   # 生效浏览器
         }
     }
 }
@@ -170,6 +176,14 @@ function Set-AfsConfigSafe {
 
     try { $cfg.web.port = [int]$cfg.web.port } catch { $cfg.web.port = 8737 }
     if ($cfg.web.port -lt 1 -or $cfg.web.port -gt 65535) { $cfg.web.port = 8737 }
+
+    $cfg.browser.enabled  = [bool]$cfg.browser.enabled
+    $cfg.browser.urlBlock = [bool]$cfg.browser.urlBlock
+    $cfg.browser.windows = @(Normalize-AfsList $cfg.browser.windows | ForEach-Object { ([string]$_).Trim() } |
+        Where-Object { $_ } | Sort-Object -Unique)
+    $cfg.browser.targets = @(Normalize-AfsList $cfg.browser.targets | ForEach-Object { ([string]$_).Trim().ToLower() } |
+        Where-Object { $_ -in @('edge','chrome') } | Sort-Object -Unique)
+    if ($cfg.browser.targets.Count -eq 0) { $cfg.browser.targets = @('edge','chrome') }
 
     Write-AfsJson -Path (Get-AfsConfigPath) -Object $cfg
     $cfg
@@ -494,6 +508,116 @@ function Invoke-AfsClashRestore {
     Remove-AfsClashState
 }
 
+# ---------- 浏览器窗口(工作区)屏蔽 ----------
+# 屏蔽时优雅关闭标题匹配的浏览器窗口(例如 Edge 的"娱乐"工作区), 其他窗口/工作区不受影响。
+# 关闭动作必须跑在用户交互会话里(S4U 计划任务无法操作桌面窗口),
+# 所以由 AwayFromShorts-BrowserClose 交互计划任务执行 close-browser-windows.ps1。
+# 附加 urlBlock: 用 Edge/Chrome 的 URLBlocklist 注册表策略在导航层拦截 blockedSites 域名,
+# 与代理/DNS 无关无法绕过; 策略变更需重启浏览器生效。
+
+$script:AFS_BROWSER_TASK  = 'AwayFromShorts-BrowserClose'
+$script:AFS_BROWSER_CLOSE = 'browser-close.json'
+$script:AFS_BROWSER_STATE = 'browser-state.json'
+
+function Get-AfsBrowserClosePath  { (Join-Path (Split-Path (Get-AfsConfigPath)) $script:AFS_BROWSER_CLOSE) }
+function Get-AfsBrowserStatePath { (Join-Path (Split-Path (Get-AfsConfigPath)) $script:AFS_BROWSER_STATE) }
+
+function Read-AfsBrowserState {
+    $p = Get-AfsBrowserStatePath
+    if (Test-Path $p) {
+        try { return ConvertTo-AfsHashtable (ConvertFrom-Json ([System.IO.File]::ReadAllText($p, [System.Text.Encoding]::UTF8))) } catch { }
+    }
+    @{ applied = $false }
+}
+
+function Save-AfsBrowserState {
+    param([bool]$Applied)
+    $utf8 = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText((Get-AfsBrowserStatePath), (ConvertTo-Json @{ applied = $Applied }), $utf8)
+}
+
+# 域名列表 -> URLBlocklist 通配符模式 (覆盖 http/https/ws 及子域)
+function ConvertTo-AfsUrlPatterns {
+    param($Domains)
+    $out = New-Object System.Collections.Generic.List[string]
+    foreach ($d in @($Domains)) {
+        $d = ([string]$d).Trim().ToLower()
+        if (-not $d -or $d -notmatch '^[a-z0-9.\-]+$') { continue }
+        $out.Add("*://$d/*")
+        $out.Add("*://*.$d/*")
+    }
+    @($out | Select-Object -Unique)
+}
+
+function Get-AfsBrowserPolicyPaths {
+    param($Targets)
+    $map = @{ edge = 'HKLM:\SOFTWARE\Policies\Microsoft\Edge'; chrome = 'HKLM:\SOFTWARE\Policies\Google\Chrome' }
+    @($Targets | ForEach-Object { if ($map.ContainsKey($_)) { $map[$_] } } | Select-Object -Unique)
+}
+
+# 写入 URL 拦截策略, 返回拦截域名数
+function Set-AfsBrowserPolicy {
+    param($Config)
+    $sites   = @($Config.blockedSites | ForEach-Object { $_.Trim().ToLower() } | Where-Object { $_ })
+    $wlSites = @($Config.whitelist.sites | ForEach-Object { $_.Trim().ToLower() } | Where-Object { $_ })
+    $toBlock = @($sites | Where-Object { $wlSites -notcontains $_ })
+    $blockPatterns = ConvertTo-AfsUrlPatterns -Domains $toBlock
+    $allowPatterns = ConvertTo-AfsUrlPatterns -Domains $wlSites
+    foreach ($root in Get-AfsBrowserPolicyPaths -Targets $Config.browser.targets) {
+        New-Item -Path $root -Force | Out-Null
+        Remove-Item (Join-Path $root 'URLBlocklist') -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item (Join-Path $root 'URLAllowlist') -Recurse -Force -ErrorAction SilentlyContinue
+        if ($blockPatterns.Count) {
+            $bk = Join-Path $root 'URLBlocklist'
+            New-Item -Path $bk -Force | Out-Null
+            for ($i = 0; $i -lt $blockPatterns.Count; $i++) {
+                New-ItemProperty -Path $bk -Name ([string]($i + 1)) -Value $blockPatterns[$i] -PropertyType String -Force | Out-Null
+            }
+        }
+        if ($allowPatterns.Count) {
+            $ak = Join-Path $root 'URLAllowlist'
+            New-Item -Path $ak -Force | Out-Null
+            for ($i = 0; $i -lt $allowPatterns.Count; $i++) {
+                New-ItemProperty -Path $ak -Name ([string]($i + 1)) -Value $allowPatterns[$i] -PropertyType String -Force | Out-Null
+            }
+        }
+    }
+    $toBlock.Count
+}
+
+function Remove-AfsBrowserPolicy {
+    param($Config)
+    foreach ($root in Get-AfsBrowserPolicyPaths -Targets $Config.browser.targets) {
+        Remove-Item (Join-Path $root 'URLBlocklist') -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item (Join-Path $root 'URLAllowlist') -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+# 触发浏览器交互任务: 写载荷(browser-close.json) + 幂等创建任务 + /Run
+# RestartAll: 关闭所有浏览器窗口后重新打开 (URLBlocklist 变更后重启使策略生效)
+function Invoke-AfsBrowserWindowClose {
+    param($Config, [switch]$RestartAll)
+    $payload = @{
+        patterns   = @($Config.browser.windows | Where-Object { $_ })
+        targets    = @($Config.browser.targets)
+        restartAll = [bool]$RestartAll
+    }
+    Write-AfsJson -Path (Get-AfsBrowserClosePath) -Object $payload
+    $scriptPath = Join-Path (Split-Path (Get-AfsConfigPath)) 'close-browser-windows.ps1'
+    $tr = '"powershell.exe" -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + $scriptPath + '"'
+    $tr = $tr -replace '"', '\"'
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    & schtasks /Create /F /TN $script:AFS_BROWSER_TASK /SC ONCE /ST 00:00 /IT /TR $tr *> $null
+    & schtasks /Run /TN $script:AFS_BROWSER_TASK *> $null
+    $ErrorActionPreference = $prev
+}
+
+function Remove-AfsBrowserClose {
+    $p = Get-AfsBrowserClosePath
+    if (Test-Path $p) { Remove-Item $p -Force -ErrorAction SilentlyContinue }
+}
+
 # 核心: 根据配置执行一次屏蔽/解除
 function Invoke-AfsEnforce {
     param(
@@ -533,6 +657,7 @@ function Invoke-AfsEnforce {
         reason = $state.reason
         hosts  = 'clean'
         killed = @()
+        browser = 'off'
     }
     try {
         if ($active) {
@@ -549,6 +674,11 @@ function Invoke-AfsEnforce {
             }
             if (-not $Simulate) {
                 $killList = Get-AfsProcessKillList -Config $Config
+                if ($Config.browser.enabled) {
+                    # 浏览器窗口(工作区)屏蔽生效: 浏览器不按进程强杀, 交给窗口关闭机制
+                    $browserNames = @($Config.browser.targets | ForEach-Object { if ($_ -eq 'edge') { 'msedge' } else { 'chrome' } })
+                    $killList = @($killList | Where-Object { $browserNames -notcontains $_ })
+                }
                 $killed = New-Object System.Collections.Generic.List[string]
                 foreach ($n in $killList) {
                     foreach ($pr in @(Get-Process -Name $n -ErrorAction SilentlyContinue)) {
@@ -562,6 +692,32 @@ function Invoke-AfsEnforce {
             }
             # 屏蔽时段: 关 Clash 系统代理 + TUN (防绕过 hosts)
             if ($Simulate) { Invoke-AfsClashOff -Config $Config -Simulate } else { Invoke-AfsClashOff -Config $Config }
+            # 浏览器窗口(工作区)屏蔽: 每分钟触发关闭匹配窗口 (用户重开也会再关)
+            if (-not $Simulate -and ($Config.browser.enabled -or $Config.browser.urlBlock)) {
+                Invoke-AfsBrowserWindowClose -Config $Config
+                $log.browser = "window-block($(@($Config.browser.windows | Where-Object { $_ }).Count) patterns)"
+            } elseif (-not $Simulate) {
+                Remove-AfsBrowserClose
+            }
+            # 附加 URL 拦截 (URLBlocklist): 状态机, 仅在 开启/关闭 转变时写策略 + 重启浏览器
+            $bState = Read-AfsBrowserState
+            if ($Config.browser.urlBlock -and -not $bState.applied) {
+                if ($Simulate) { $log.browser = 'simulate-urlblock' }
+                else {
+                    $n = Set-AfsBrowserPolicy -Config $Config
+                    Save-AfsBrowserState -Applied $true
+                    $log.browser = "url-block($n domains)"
+                    Invoke-AfsBrowserWindowClose -Config $Config -RestartAll   # 重启浏览器使策略生效
+                }
+            } elseif (-not $Config.browser.urlBlock -and $bState.applied) {
+                if ($Simulate) { $log.browser = 'simulate-urlclean' }
+                else {
+                    Remove-AfsBrowserPolicy -Config $Config
+                    Save-AfsBrowserState -Applied $false
+                    $log.browser = 'url-clean'
+                    Invoke-AfsBrowserWindowClose -Config $Config -RestartAll
+                }
+            }
         } else {
             if ($Simulate) {
                 $log.hosts = 'simulate-clean'
@@ -571,6 +727,18 @@ function Invoke-AfsEnforce {
             }
             # 解除屏蔽: 恢复 Clash 原状态
             if ($Simulate) { Invoke-AfsClashRestore -Config $Config -Simulate } else { Invoke-AfsClashRestore -Config $Config }
+            # 解除: 移除 URL 拦截策略并重启浏览器恢复; 停止窗口关闭
+            $bState = Read-AfsBrowserState
+            if ($bState.applied) {
+                if ($Simulate) { $log.browser = 'simulate-urlclean' }
+                else {
+                    Remove-AfsBrowserPolicy -Config $Config
+                    Save-AfsBrowserState -Applied $false
+                    $log.browser = 'url-clean'
+                    Invoke-AfsBrowserWindowClose -Config $Config -RestartAll
+                }
+            }
+            if (-not $Simulate) { Remove-AfsBrowserClose }
         }
         # 过期 override 自动清理
         if ($Config.override.mode -ne 'none' -and $Config.override.until) {

@@ -309,6 +309,28 @@
         <div class="hint">开启后,屏蔽期间会关闭 Windows 系统代理并禁用 Clash 的 TUN 虚拟网卡,防止流量走代理绕过 hosts 屏蔽;屏蔽结束自动恢复。<b>如果你屏蔽时段还要联网工作(如 Codex / 写代码),请关闭此开关</b>——关闭后屏蔽照常进行,但代理和 TUN 保持开启(网站屏蔽可能被代理绕过)。</div>
       </div>
       <div class="card">
+        <div class="switch-row">
+          <div class="lbl">
+            <label class="switch"><input type="checkbox" id="browserSwitch"><span class="slider"></span></label>
+            <b>屏蔽浏览器特定窗口(工作区)</b>
+          </div>
+        </div>
+        <div class="hint">屏蔽期间,标题匹配的浏览器窗口会被<b>自动优雅关闭</b>(反复打开也会再被关闭),其他窗口/工作区不受影响。适合"只屏蔽娱乐工作区、工作窗口照常使用"。</div>
+        <div class="add-row">
+          <input id="browserWinInput" placeholder="窗口标题, 支持 * 通配符, 例如: 娱乐" spellcheck="false">
+          <button class="btn" id="addBrowserWinBtn">添加</button>
+          <button class="btn" id="scanWinBtn">🪟 检测当前窗口</button>
+        </div>
+        <div class="list" id="browserWinList"></div>
+        <div class="switch-row" style="margin-top:12px">
+          <div class="lbl">
+            <label class="switch"><input type="checkbox" id="urlBlockSwitch"><span class="slider"></span></label>
+            <b>同时拦截娱乐网站(更严格)</b>
+          </div>
+        </div>
+        <div class="hint">附加:屏蔽期间浏览器无法打开"网站屏蔽"列表中的域名(在浏览器导航层拦截,代理也绕过不了),需重启浏览器一次生效。</div>
+      </div>
+      <div class="card">
         <h3>常用网站</h3>
         <div class="preset-grid" id="sitePresets"></div>
       </div>
@@ -526,6 +548,7 @@ function renderAll() {
   renderSchedule();
   renderForce();
   renderSites();
+  renderBrowser();
   renderProcesses();
   renderWhitelist();
   renderSync();
@@ -656,6 +679,13 @@ function renderSites() {
   renderList("#siteList", cfg.blockedSites, "site");
 }
 
+function renderBrowser() {
+  if (!cfg.browser) cfg.browser = { enabled: true, windows: [], urlBlock: false, targets: ["edge", "chrome"] };
+  $("#browserSwitch").checked = !!cfg.browser.enabled;
+  $("#urlBlockSwitch").checked = !!cfg.browser.urlBlock;
+  renderList("#browserWinList", cfg.browser.windows, "bwin");
+}
+
 function renderProcesses() {
   $("#procPresets").innerHTML = PROC_PRESETS.map(p => {
     const st = presetState(p, cfg.blockedProcesses);
@@ -719,6 +749,32 @@ $("#clashSwitch").addEventListener("change", e => {
   if (!cfg.clash) cfg.clash = { enabled: true, systemProxy: true, tun: true, tunAdapter: "Meta" };
   cfg.clash.enabled = e.target.checked;
   markDirty();
+});
+$("#browserSwitch").addEventListener("change", e => {
+  if (!cfg.browser) cfg.browser = { enabled: true, windows: [], urlBlock: false, targets: ["edge", "chrome"] };
+  cfg.browser.enabled = e.target.checked;
+  markDirty();
+});
+$("#urlBlockSwitch").addEventListener("change", e => {
+  if (!cfg.browser) cfg.browser = { enabled: true, windows: [], urlBlock: false, targets: ["edge", "chrome"] };
+  cfg.browser.urlBlock = e.target.checked;
+  markDirty();
+});
+$("#addBrowserWinBtn").addEventListener("click", () => {
+  if (!cfg.browser) cfg.browser = { enabled: true, windows: [], urlBlock: false, targets: ["edge", "chrome"] };
+  addItem("#browserWinInput", () => cfg.browser.windows, "bwin");
+});
+$("#scanWinBtn").addEventListener("click", async () => {
+  if (!cfg.browser) cfg.browser = { enabled: true, windows: [], urlBlock: false, targets: ["edge", "chrome"] };
+  try {
+    const r = await api("/api/browser/windows", "GET");
+    const wins = r.windows || [];
+    if (!wins.length) { toast("当前没有打开的浏览器窗口", "err"); return; }
+    let added = 0;
+    wins.forEach(t => { if (!cfg.browser.windows.includes(t)) { cfg.browser.windows.push(t); added++; } });
+    renderBrowser(); markDirty();
+    toast("已添加 " + added + " 个窗口标题, 点「保存更改」生效", "ok");
+  } catch (e) { toast("检测失败: " + e.message, "err"); }
 });
 
 // 星期
@@ -800,7 +856,7 @@ function addItem(inputSel, getList, kind) {
   const list = getList();
   if (!list.includes(v)) list.push(v);
   input.value = "";
-  if (kind === "site") renderSites(); else if (kind === "proc") renderProcesses(); else renderWhitelist();
+  if (kind === "site") renderSites(); else if (kind === "proc") renderProcesses(); else if (kind === "bwin") renderBrowser(); else renderWhitelist();
   markDirty();
 }
 
@@ -809,11 +865,11 @@ document.addEventListener("click", e => {
   const btn = e.target.closest(".del-item");
   if (!btn) return;
   const { kind, v } = btn.dataset;
-  const lists = { site: cfg.blockedSites, proc: cfg.blockedProcesses, wlsite: cfg.whitelist.sites, wlproc: cfg.whitelist.processes };
+  const lists = { site: cfg.blockedSites, proc: cfg.blockedProcesses, wlsite: cfg.whitelist.sites, wlproc: cfg.whitelist.processes, bwin: cfg.browser.windows };
   const list = lists[kind];
   const i = list.indexOf(v);
   if (i >= 0) list.splice(i, 1);
-  if (kind === "site") renderSites(); else if (kind === "proc") renderProcesses(); else renderWhitelist();
+  if (kind === "site") renderSites(); else if (kind === "proc") renderProcesses(); else if (kind === "bwin") renderBrowser(); else renderWhitelist();
   markDirty();
 });
 

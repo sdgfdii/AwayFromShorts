@@ -21,6 +21,16 @@ Copy-Item (Join-Path $root 'README.md')        $stage
 Copy-Item (Join-Path $root 'LICENSE')          $stage
 Copy-Item (Join-Path $root 'src')              $stage -Recurse
 
+# 清除运行时/用户数据文件, 防止打包进懒人包 (隐私: 白名单/Token/状态等)
+$runtimeFiles = @(
+    'config.json', 'last-run.json', 'github-token.enc',
+    'sync-state.json', 'force-state.json', 'clash-state.json',
+    'browser-state.json', 'browser-close.json', 'browser-close.log'
+)
+Get-ChildItem (Join-Path $stage 'src') -File |
+    Where-Object { $runtimeFiles -contains $_.Name } |
+    Remove-Item -Force
+
 if (-not (Test-Path $dist)) { New-Item -ItemType Directory -Path $dist | Out-Null }
 $out = Join-Path $dist "AwayFromShorts-v$Version-win64.zip"
 Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $out -Force
