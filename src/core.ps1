@@ -5,7 +5,7 @@
 # ============================================================
 
 $script:AFS_NAME        = 'AwayFromShorts'
-$script:AFS_VERSION     = '1.2.5'
+$script:AFS_VERSION     = '1.2.6'
 $script:AFS_MARK_START  = "# >>> $($script:AFS_NAME) >>> (managed by AwayFromShorts - do not edit)"
 $script:AFS_MARK_END    = "# <<< $($script:AFS_NAME) <<<"
 # 这些进程永远不杀,防止把系统/本工具自己弄死
@@ -235,7 +235,7 @@ function Test-AfsForceActive {
         $t = [datetime]::MinValue
         if ([datetime]::TryParse([string]$st.until, [ref]$t)) { if ($null -eq $until -or $t -gt $until) { $until = $t } }
     }
-    if ($null -eq $until) { $until = $Now.Date.AddDays(1).AddSeconds(-1) }   # 默认当天结束, 避免 null.ToString 崩溃
+    if ($null -eq $until -or $until -lt $Now) { $until = $Now.Date.AddDays(1).AddSeconds(-1) }   # 缺失或已过期(跨天后)都刷新为当天结束
     @{ active = $true; until = $until }
 }
 
@@ -663,7 +663,7 @@ function Invoke-AfsEnforce {
         # 窗口内: 强制必须生效, 修复 config + 独立状态文件 (防手改 json / 面板关闭破戒)
         $forceNow = Test-AfsForceActive -Config $Config
         if (-not $forceNow.active) { $forceNow = @{ active = $true; until = (Get-Date).Date.AddDays(1).AddSeconds(-1) } }
-        $needFix = -not ($Config.force.enabled -and $Config.force.until)
+        $needFix = -not ($Config.force.enabled -and $Config.force.until -and $Config.force.until -gt (Get-Date).ToString('o'))
         if ($needFix) {
             $Config.force.enabled = $true
             $Config.force.until  = $forceNow.until.ToString('o')
