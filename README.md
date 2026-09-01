@@ -1,4 +1,4 @@
-# AwayFromShorts 🚫📱
+﻿# AwayFromShorts 🚫📱
 
 > 远离短视频成瘾 —— 在指定时间屏蔽网站和程序,并提供一个可视化网页随时调整规则。
 

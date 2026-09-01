@@ -5,7 +5,7 @@
 # ============================================================
 
 $script:AFS_NAME        = 'AwayFromShorts'
-$script:AFS_VERSION     = '1.2.8'
+$script:AFS_VERSION     = '1.2.9'
 $script:AFS_MARK_START  = "# >>> $($script:AFS_NAME) >>> (managed by AwayFromShorts - do not edit)"
 $script:AFS_MARK_END    = "# <<< $($script:AFS_NAME) <<<"
 # 这些进程永远不杀,防止把系统/本工具自己弄死
@@ -525,11 +525,51 @@ function Invoke-AfsBrowserWindowClose {
     # 用 wscript.exe + VBS 隐藏启动 (GUI 子系统, 无控制台窗口) —— 直接跑 powershell 即使 -WindowStyle Hidden
     # 控制台分配瞬间仍会闪黑窗, 这是"每分钟闪弹窗"的根因
     $vbsPath = Join-Path (Split-Path (Get-AfsConfigPath)) 'close-browser.vbs'
-    $tr = '"wscript.exe" "' + $vbsPath + '"'
-    $tr = $tr -replace '"', '\"'
+    # 用 XML 创建任务: 必须关闭电池限制 (DisallowStartIfOnBatteries/StopIfGoingOnBatteries=false),
+    # 否则笔记本用电池时任务不启动, 窗口屏蔽会静默失效 (schtasks /SC ONCE 默认电池限制为 true)
+    # InteractiveToken: 交互会话才能关闭桌面窗口; 不存密码
+    $xml = '<?xml version="1.0" encoding="UTF-16"?>' + "`r`n" +
+           '<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">' + "`r`n" +
+           '  <RegistrationInfo>' + "`r`n" +
+           '    <Date>' + (Get-Date -Format 'yyyy-MM-ddTHH:mm:ss') + '</Date>' + "`r`n" +
+           '    <Author>AwayFromShorts</Author>' + "`r`n" +
+           '    <URI>\' + $script:AFS_BROWSER_TASK + '</URI>' + "`r`n" +
+           '  </RegistrationInfo>' + "`r`n" +
+           '  <Principals>' + "`r`n" +
+           '    <Principal id="Author">' + "`r`n" +
+           '      <LogonType>InteractiveToken</LogonType>' + "`r`n" +
+           '    </Principal>' + "`r`n" +
+           '  </Principals>' + "`r`n" +
+           '  <Settings>' + "`r`n" +
+           '    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>' + "`r`n" +
+           '    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>' + "`r`n" +
+           '    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>' + "`r`n" +
+           '    <IdleSettings>' + "`r`n" +
+           '      <Duration>PT10M</Duration>' + "`r`n" +
+           '      <WaitTimeout>PT1H</WaitTimeout>' + "`r`n" +
+           '      <StopOnIdleEnd>true</StopOnIdleEnd>' + "`r`n" +
+           '      <RestartOnIdle>false</RestartOnIdle>' + "`r`n" +
+           '    </IdleSettings>' + "`r`n" +
+           '  </Settings>' + "`r`n" +
+           '  <Triggers>' + "`r`n" +
+           '    <TimeTrigger>' + "`r`n" +
+           '      <StartBoundary>' + (Get-Date -Format 'yyyy-MM-dd') + 'T00:00:00</StartBoundary>' + "`r`n" +
+           '    </TimeTrigger>' + "`r`n" +
+           '  </Triggers>' + "`r`n" +
+           '  <Actions Context="Author">' + "`r`n" +
+           '    <Exec>' + "`r`n" +
+           '      <Command>"wscript.exe"</Command>' + "`r`n" +
+           '      <Arguments>"' + $vbsPath + '"</Arguments>' + "`r`n" +
+           '    </Exec>' + "`r`n" +
+           '  </Actions>' + "`r`n" +
+           '</Task>'
+    $xmlPath = Join-Path $env:TEMP 'afs-browserclose-task.xml'
+    # schtasks /XML 要求 UTF-16 编码
+    [System.IO.File]::WriteAllText($xmlPath, $xml, [System.Text.Encoding]::Unicode)
     $prev = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
-    & schtasks /Create /F /TN $script:AFS_BROWSER_TASK /SC ONCE /ST 00:00 /IT /TR $tr *> $null
+    & schtasks /Create /F /TN $script:AFS_BROWSER_TASK /XML $xmlPath *> $null
+    Remove-Item $xmlPath -Force -ErrorAction SilentlyContinue
     & schtasks /Run /TN $script:AFS_BROWSER_TASK *> $null
     $ErrorActionPreference = $prev
 }
