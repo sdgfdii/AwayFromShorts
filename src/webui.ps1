@@ -245,7 +245,18 @@ $handler = {
                     $c.override.until = (Get-Date).AddMinutes($minutes).ToString('o')
                 }
                 Set-AfsConfigSafe -InputConfig $c | Out-Null   # 返回值必须吞掉, 否则会泄漏到 stdout
-                Send-AfsJson -Stream $stream -Status 200 -Obj @{ ok = $true; until = $c.override.until; note = '已设置, 1 分钟内生效' }
+                # 立即生效: 管理员面板直接同步执行 enforcer, 不等计划任务 (任务可能失败/错过触发, 避免"点了没用")
+                $applied = $false
+                if (Get-AfsIsAdmin) {
+                    try {
+                        Invoke-AfsLocked -Action {
+                            Invoke-AfsEnforce -Config (Get-AfsConfig) -HostsPath (Get-AfsDefaultHostsPath) -LogPath $logPath
+                        } | Out-Null
+                        $applied = $true
+                    } catch { $applied = $false }
+                }
+                if ($applied) { $note = '已设置并立即生效' } else { $note = '已设置, 1 分钟内生效(自动)' }
+                Send-AfsJson -Stream $stream -Status 200 -Obj @{ ok = $true; until = $c.override.until; applied = $applied; note = $note }
             } catch {
                 Send-AfsJson -Stream $stream -Status 400 -Obj @{ ok = $false; error = $_.Exception.Message }
             }
