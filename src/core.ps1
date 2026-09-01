@@ -5,7 +5,7 @@
 # ============================================================
 
 $script:AFS_NAME        = 'AwayFromShorts'
-$script:AFS_VERSION     = '1.2.7'
+$script:AFS_VERSION     = '1.2.8'
 $script:AFS_MARK_START  = "# >>> $($script:AFS_NAME) >>> (managed by AwayFromShorts - do not edit)"
 $script:AFS_MARK_END    = "# <<< $($script:AFS_NAME) <<<"
 # 这些进程永远不杀,防止把系统/本工具自己弄死
@@ -551,18 +551,20 @@ function Invoke-AfsEnforce {
     $active = $state.active
     # ---- 强制模式兜底: 仅在屏蔽计划窗口内生效 ----
     if (Test-AfsInScheduleWindow -Config $Config) {
-        # 窗口内: 强制必须生效, 修复 config + 独立状态文件 (防手改 json / 面板关闭破戒)
+        # 窗口内: 仅当用户仍开启强制时, 刷新 until + 独立状态文件 (防手改 json 破戒)
+        # 用户已关闭 (enabled=false) 则尊重选择, 不再强制恢复
         $forceNow = Test-AfsForceActive -Config $Config
-        if (-not $forceNow.active) { $forceNow = @{ active = $true; until = (Get-Date).Date.AddDays(1).AddSeconds(-1) } }
-        $needFix = -not ($Config.force.enabled -and $Config.force.until -and $Config.force.until -gt (Get-Date).ToString('o'))
-        if ($needFix) {
-            $Config.force.enabled = $true
-            $Config.force.until  = $forceNow.until.ToString('o')
+        if ($forceNow.active) {
+            $needFix = -not ($Config.force.enabled -and $Config.force.until -and $Config.force.until -gt (Get-Date).ToString('o'))
+            if ($needFix) {
+                $Config.force.enabled = $true
+                $Config.force.until  = $forceNow.until.ToString('o')
+            }
+            if (-not (Test-Path (Get-AfsForceStatePath))) {
+                Save-AfsForceState -Until $forceNow.until.ToString('o')
+            }
+            if ($needFix -and -not $Simulate) { Set-AfsConfigSafe -InputConfig $Config | Out-Null }
         }
-        if (-not (Test-Path (Get-AfsForceStatePath))) {
-            Save-AfsForceState -Until $forceNow.until.ToString('o')
-        }
-        if ($needFix -and -not $Simulate) { Set-AfsConfigSafe -InputConfig $Config | Out-Null }
     } else {
         # 窗口外: 强制不生效, 保留用户配置 (enabled 留到下个屏蔽时段自动生效), 只清过期状态文件
         Remove-AfsForceState

@@ -168,7 +168,7 @@ $handler = {
                 $inCfg = ConvertTo-AfsHashtable $o
                 $forceNow = Test-AfsForceActive -Config (Get-AfsConfig)
                 if ($forceNow.active -and -not [bool]$inCfg.enabled) {
-                    throw "强制模式生效中 (屏蔽时段内 $($forceNow.until.ToString('HH:mm')) 前无法关闭屏蔽)"
+                    throw "强制模式生效中 (可先关闭强制模式, 再关闭屏蔽)"
                 }
                 $newCfg = Set-AfsConfigSafe -InputConfig $inCfg
                 Send-AfsJson -Stream $stream -Status 200 -Obj @{
@@ -199,15 +199,12 @@ $handler = {
                         note = "强制模式已开启: 屏蔽时段内 ($($until.ToString('yyyy-MM-dd HH:mm')) 前) 无法关闭/解除屏蔽, 时段外不强制"
                     }
                 } else {
-                    $forceNow = Test-AfsForceActive -Config $c
-                    if ($forceNow.active) {
-                        throw "强制模式生效中 (屏蔽时段内 $($forceNow.until.ToString('HH:mm')) 前无法关闭屏蔽)"
-                    }
+                    # 允许随时关闭 (即使生效中): 清 config + 独立状态文件, 计划任务不再兜底补开
                     $c.force.enabled = $false
                     $c.force.until  = $null
                     Set-AfsConfigSafe -InputConfig $c | Out-Null
                     Remove-AfsForceState
-                    Send-AfsJson -Stream $stream -Status 200 -Obj @{ ok = $true; note = '强制模式已关闭 (下次屏蔽时段不再强制)' }
+                    Send-AfsJson -Stream $stream -Status 200 -Obj @{ ok = $true; note = '强制模式已关闭' }
                 }
             } catch {
                 Send-AfsJson -Stream $stream -Status 400 -Obj @{ ok = $false; error = $_.Exception.Message }
@@ -239,7 +236,7 @@ $handler = {
                 $c = Get-AfsConfig
                 $forceNow = Test-AfsForceActive -Config $c
                 if ($forceNow.active -and $mode -in @('off','none')) {
-                    throw "强制模式生效中 (屏蔽时段内 $($forceNow.until.ToString('HH:mm')) 前无法解除屏蔽)"
+                    throw "强制模式生效中 (可先关闭强制模式, 再解除屏蔽)"
                 }
                 if ($mode -eq 'none') {
                     $c.override.mode = 'none'; $c.override.until = $null
