@@ -72,10 +72,13 @@ __B64__;
                 int rc = RunCmd("powershell.exe", "-NoProfile -ExecutionPolicy Bypass -File \"" + regTask + "\" -TaskFile \"" + taskFile + "\"");
                 if (rc != 0) { throw new Exception("计划任务注册失败 (exit " + rc + ")"); }
 
-                // 5.5 开机自启: 启动文件夹放隐藏启动脚本(登录自动拉起面板, 不闪窗口)
-                string vbsSrc = Path.Combine(app, "startup-webui.vbs");
-                string vbsDst = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Startup), "AwayFromShorts-WebUI.vbs");
-                if (File.Exists(vbsSrc)) { File.Copy(vbsSrc, vbsDst, true); }
+                // 5.5 开机自启: 注册 AwayFromShorts-WebUI 任务 (InteractiveToken+HighestAvailable+AtLogOn)
+                // 用户登录时 Task Scheduler 直接以提升令牌启动面板, 不弹 UAC
+                string regWebui = Path.Combine(app, "src", "register-webui-task.ps1");
+                RunCmd("powershell.exe", "-NoProfile -ExecutionPolicy Bypass -File \"" + regWebui + "\"");
+                // 清理旧的启动文件夹 VBS 自启(避免重复弹 UAC)
+                string vbsLegacy = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Startup), "AwayFromShorts-WebUI.vbs");
+                if (File.Exists(vbsLegacy)) { try { File.Delete(vbsLegacy); } catch { } }
 
                 // 6. 立即执行一次(隐藏窗口) + 启动面板
                 RunCmd("powershell.exe", "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"" + taskFile + "\"");

@@ -21,6 +21,7 @@ $appRoot = Split-Path $PSScriptRoot   # src 的上一级 = 程序目录
 Write-Host '[1/6] 删除计划任务...'
 schtasks /Delete /TN "AwayFromShorts" /F 2>&1 | Out-Null
 schtasks /Delete /TN "AwayFromShorts-BrowserClose" /F 2>&1 | Out-Null
+schtasks /Delete /TN "AwayFromShorts-WebUI" /F 2>&1 | Out-Null
 
 # 2. 恢复 hosts(移除本程序的标记块)
 Write-Host '[2/6] 恢复 hosts 文件...'
@@ -51,7 +52,7 @@ try {
 Write-Host '[5/6] 清理备份文件...'
 if (Test-Path (Join-Path $appRoot 'hosts.backup')) { Remove-Item (Join-Path $appRoot 'hosts.backup') -Force -ErrorAction SilentlyContinue }
 
-# 4.5 删除开机自启项(启动文件夹里的隐藏启动脚本)
+# 4.5 删除开机自启残留(旧版本用启动文件夹 VBS; 新版用 AwayFromShorts-WebUI 任务, 上面已删)
 $startupVbs = Join-Path ([Environment]::GetFolderPath('Startup')) 'AwayFromShorts-WebUI.vbs'
 if (Test-Path $startupVbs) { Remove-Item $startupVbs -Force -ErrorAction SilentlyContinue }
 

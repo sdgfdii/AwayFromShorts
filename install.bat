@@ -26,6 +26,7 @@ copy /y "%SRC%src\awayfromshorts.ps1"   "%APP%\src\" >nul
 copy /y "%SRC%src\webui.ps1"            "%APP%\src\" >nul
 copy /y "%SRC%src\uninstall.ps1"        "%APP%\src\" >nul
 copy /y "%SRC%src\register-task.ps1"    "%APP%\src\" >nul
+copy /y "%SRC%src\register-webui-task.ps1" "%APP%\src\" >nul
 copy /y "%SRC%src\close-browser-windows.ps1" "%APP%\src\" >nul
 copy /y "%SRC%src\close-browser.vbs"             "%APP%\src\" >nul
 if not exist "%APP%\src\web" mkdir "%APP%\src\web"
@@ -45,9 +46,13 @@ if %errorlevel% neq 0 (
   exit /b 1
 )
 
-echo [4/5] 设置开机自启(登录时自动启动面板)
-set "STARTUP=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup"
-copy /y "%SRC%startup-webui.vbs" "%STARTUP%\AwayFromShorts-WebUI.vbs" >nul
+echo [4/5] 设置开机自启(登录时以管理员启动面板, 不再弹 UAC)
+powershell -NoProfile -ExecutionPolicy Bypass -File "%APP%\src\register-webui-task.ps1"
+if %errorlevel% neq 0 (
+  echo [警告] 面板自启任务注册失败, 可稍后手动运行 register-webui-task.ps1
+)
+REM 清理旧的启动文件夹 VBS 自启(避免重复弹 UAC)
+if exist "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\AwayFromShorts-WebUI.vbs" del /q "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\AwayFromShorts-WebUI.vbs" >nul
 
 echo [5/5] 立即执行一次屏蔽检查
 powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%APP%\src\awayfromshorts.ps1"
