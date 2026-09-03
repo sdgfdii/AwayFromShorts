@@ -582,7 +582,15 @@ function renderStatus() {
   a.textContent = status.isAdmin ? "管理员" : "普通用户(修改将延迟 ≤1 分钟)";
   a.className = "v " + (status.isAdmin ? "green" : "orange");
 
-  $("#stNext").textContent = status.nextActive || (status.active ? "当前正在屏蔽" : "未设置计划");
+  // 临时解除/屏蔽生效时: 直接显示"至几点" (到期自动恢复/解除), 避免 nextActive 误导
+  const ov = cfg.override || {};
+  const ovUntil = ov.until ? new Date(ov.until) : null;
+  if ((status.activeReason === "override-off" || status.activeReason === "override-block") && ovUntil && ovUntil > new Date()) {
+    const ovMin = Math.max(1, Math.round((ovUntil - Date.now()) / 60000));
+    $("#stNext").textContent = (status.activeReason === "override-off" ? "解除至 " : "屏蔽至 ") + ovUntil.toLocaleString() + ` (约 ${ovMin} 分钟后${status.activeReason === "override-off" ? "自动恢复屏蔽" : "自动解除"})`;
+  } else {
+    $("#stNext").textContent = status.nextActive || (status.active ? "当前正在屏蔽" : "未设置计划");
+  }
   const lr = status.lastRun;
   $("#stLast").textContent = lr && lr.time ? lr.time + (lr.error ? " (出错: " + lr.error + ")" : "") : "尚无记录";
 

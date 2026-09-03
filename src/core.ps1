@@ -5,7 +5,7 @@
 # ============================================================
 
 $script:AFS_NAME        = 'AwayFromShorts'
-$script:AFS_VERSION     = '1.3.1'
+$script:AFS_VERSION     = '1.3.2'
 $script:AFS_MARK_START  = "# >>> $($script:AFS_NAME) >>> (managed by AwayFromShorts - do not edit)"
 $script:AFS_MARK_END    = "# <<< $($script:AFS_NAME) <<<"
 # 这些进程永远不杀,防止把系统/本工具自己弄死
@@ -277,7 +277,7 @@ function Get-AfsActiveState {
     if ($ov.mode -ne 'none' -and $ov.until) {
         $until = [datetime]::MinValue   # 必须类型化, 否则 [ref] 无法匹配 TryParse 重载
         if ([datetime]::TryParse([string]$ov.until, [ref]$until)) {
-            if ((Get-Date) -lt $until) {
+            if ($Now -lt $until) {
                 if ($ov.mode -eq 'block') { return @{ active = $true;  reason = 'override-block' } }
                 if ($ov.mode -eq 'off')   { return @{ active = $false; reason = 'override-off' } }
             }
@@ -300,7 +300,16 @@ function Get-AfsActiveState {
 # 下一个屏蔽开始时间 (当前不在屏蔽中时调用); 当前屏蔽中返回 $null
 function Get-AfsNextActiveTime {
     param($Config, [datetime]$Now = (Get-Date))
+    # 当前正在屏蔽中 -> 没有"下一次"
     if ((Get-AfsActiveState -Config $Config -Now $Now).active) { return $null }
+    # 候选时刻 = override-off 到期时刻 + 未来各计划窗口的开始时刻
+    # (临时解除 30 分钟但到期时仍在屏蔽窗口内 -> 到期即恢复屏蔽, 不能只找下一个窗口)
+    $cands = New-Object System.Collections.Generic.List[datetime]
+    $ov = $Config.override
+    if ($ov.mode -eq 'off' -and $ov.until) {
+        $u = [datetime]::MinValue
+        if ([datetime]::TryParse([string]$ov.until, [ref]$u) -and $u -gt $Now) { $cands.Add($u) }
+    }
     for ($d = 0; $d -le 8; $d++) {
         $day = $Now.AddDays($d)
         $dayNum = [int]$day.DayOfWeek
@@ -311,8 +320,13 @@ function Get-AfsNextActiveTime {
             $eMin = ConvertTo-AfsMinutes $w.end
             if ($sMin -eq $eMin) { continue }
             $cand = Get-Date -Year $day.Year -Month $day.Month -Day $day.Day -Hour ([int]($sMin / 60)) -Minute ($sMin % 60) -Second 0
-            if ($cand -gt $Now) { return $cand.ToString('yyyy-MM-dd HH:mm') }
+            if ($cand -gt $Now) { $cands.Add($cand) }
         }
+    }
+    # 按时间排序, 逐个检查该时刻是否真的进入屏蔽 (override 可能已过期/仍在生效)
+    foreach ($c in ($cands | Sort-Object)) {
+        $s = Get-AfsActiveState -Config $Config -Now $c
+        if ($s.active) { return $c.ToString('yyyy-MM-dd HH:mm') }
     }
     $null
 }
