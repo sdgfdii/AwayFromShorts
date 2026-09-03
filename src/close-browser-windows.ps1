@@ -29,6 +29,15 @@ try {
     $names = @($targets | ForEach-Object { if ($_ -eq 'edge') { 'msedge' } else { 'chrome' } } | Select-Object -Unique)
     if ($names.Count -eq 0) { $names = @('msedge', 'chrome') }
 
+    # 关闭前正在运行的浏览器(有窗口) —— restartAll 重开时只重开这些,
+    # 绝不启动用户本来没开的浏览器(如 chrome 只装了没用, 不该被自动拉起)
+    $hadWindow = @()
+    foreach ($n in $names) {
+        if (@(Get-Process -Name $n -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowTitle }).Count -gt 0) {
+            $hadWindow += $n
+        }
+    }
+
     # 关闭匹配窗口 (restartAll 时关闭所有带窗口进程)
     foreach ($n in $names) {
         foreach ($pr in @(Get-Process -Name $n -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowTitle })) {
@@ -77,10 +86,10 @@ try {
     # 注意: 无参 Start-Process msedge 在已有后台实例时不会弹新窗口, 必须 --new-window
     if ($restartAll) {
         Start-Sleep -Seconds 2
-        foreach ($n in $names) {
+        foreach ($n in $hadWindow) {
             $any = @(Get-Process -Name $n -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowTitle })
             if (-not $any) {
-                try { Start-Process -FilePath $n -ArgumentList '--new-window'; $log.reopened = $true; break } catch { }
+                try { Start-Process -FilePath $n -ArgumentList '--new-window'; $log.reopened = $true } catch { }
             }
         }
     }
