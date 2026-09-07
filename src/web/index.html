@@ -1389,6 +1389,7 @@ document.querySelectorAll(".nav-item").forEach(el => {
     $("#panel-" + el.dataset.tab).classList.add("active");
     const titles = { status:"状态", schedule:"屏蔽计划", sites:"网站屏蔽", processes:"进程屏蔽", whitelist:"白名单", stats:"统计", sync:"账号 / 同步", about:"关于 / 卸载" };
     $("#panelTitle").textContent = titles[el.dataset.tab];
+    if (el.dataset.tab === "stats") refreshStats();   // 进入统计页时拉取最新数据
   });
 });
 
@@ -1544,22 +1545,17 @@ $("#saveBtn").addEventListener("click", async () => {
 async function refreshStatus() {
   try { status = await api("/api/status"); renderTop(); renderStatus(); } catch (e) { toast("刷新状态失败: " + e.message, "err"); }
 }
-$("#applyBtn").addEventListener("click", async () => {
-  try { const r = await api("/api/apply", "POST", {}); toast(r.note || "已应用", "ok"); await refreshStatus(); }
-  catch (e) { toast("操作失败: " + e.message, "err"); }
-});
-$("#blockNowBtn").addEventListener("click", async () => {
-  try { const r = await api("/api/override", "POST", { mode: "block", minutes: 30 }); toast("已临时屏蔽 30 分钟, " + (r.note || ""), "ok"); await refreshStatus(); }
-  catch (e) { toast("操作失败: " + e.message, "err"); }
-});
-$("#unblockBtn").addEventListener("click", async () => {
-  try { await api("/api/override", "POST", { mode: "off", minutes: 30 }); toast("已临时解除 30 分钟", "ok"); await refreshStatus(); }
-  catch (e) { toast("操作失败: " + e.message, "err"); }
-});
-$("#clearOverrideBtn").addEventListener("click", async () => {
-  try { await api("/api/override", "POST", { mode: "none" }); toast("已清除临时设置", "ok"); await refreshStatus(); }
-  catch (e) { toast("操作失败: " + e.message, "err"); }
-});
+async function actAndRefresh(fn, okMsg) {
+  try {
+    await fn();
+    toast(okMsg || "已生效", "ok");
+    await Promise.all([refreshStatus(), refreshStats()]);
+  } catch (e) { toast("操作失败: " + e.message, "err"); }
+}
+$("#applyBtn").addEventListener("click", async () => actAndRefresh(async () => { await api("/api/apply", "POST", {}); }, "已应用"));
+$("#blockNowBtn").addEventListener("click", async () => actAndRefresh(async () => { await api("/api/override", "POST", { mode: "block", minutes: 30 }); }, "已临时屏蔽 30 分钟"));
+$("#unblockBtn").addEventListener("click", async () => actAndRefresh(async () => { await api("/api/override", "POST", { mode: "off", minutes: 30 }); }, "已临时解除 30 分钟"));
+$("#clearOverrideBtn").addEventListener("click", async () => actAndRefresh(async () => { await api("/api/override", "POST", { mode: "none" }); }, "已清除临时设置"));
 
 // 账号 / 同步
 $("#syncLoginBtn").addEventListener("click", async () => {
