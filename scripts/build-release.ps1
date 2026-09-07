@@ -25,7 +25,8 @@ Copy-Item (Join-Path $root 'src')              $stage -Recurse
 $runtimeFiles = @(
     'config.json', 'last-run.json', 'github-token.enc',
     'sync-state.json', 'force-state.json', 'clash-state.json',
-    'browser-state.json', 'browser-close.json', 'browser-close.log'
+    'browser-state.json', 'browser-close.json', 'browser-close.log',
+    'stats.json'
 )
 Get-ChildItem (Join-Path $stage 'src') -File |
     Where-Object { $runtimeFiles -contains $_.Name } |
