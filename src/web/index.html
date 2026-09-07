@@ -184,14 +184,234 @@
 
   .btn-row { display: flex; gap: 9px; flex-wrap: wrap; margin-top: 14px; }
   a { color: var(--accent); }
+
+  /* ---------- 统计页 ---------- */
+  .stat-hero { display: flex; gap: 16px; align-items: stretch; flex-wrap: wrap; }
+  .hero-main {
+    flex: 1 1 230px; border-radius: 12px; padding: 18px 22px;
+    background: linear-gradient(135deg, rgba(255,93,93,.16), rgba(255,171,61,.07));
+    border: 1px solid rgba(255,93,93,.35); position: relative; overflow: hidden;
+  }
+  .hero-main::after {
+    content: ""; position: absolute; right: -30px; top: -30px; width: 120px; height: 120px;
+    background: radial-gradient(circle, rgba(255,93,93,.25), transparent 70%); pointer-events: none;
+  }
+  .hero-main.clean { background: linear-gradient(135deg, rgba(52,199,123,.14), rgba(79,140,255,.06)); border-color: rgba(52,199,123,.35); }
+  .hero-main.clean::after { background: radial-gradient(circle, rgba(52,199,123,.22), transparent 70%); }
+  .hero-label { font-size: 12.5px; color: var(--muted); letter-spacing: 1px; }
+  .hero-count { font-size: 50px; font-weight: 800; line-height: 1.15; color: var(--red); }
+  .hero-main.clean .hero-count { color: var(--green); }
+  .hero-count .unit { font-size: 17px; font-weight: 600; color: var(--muted); margin-left: 6px; }
+  .hero-dur { font-size: 13.5px; color: var(--text); margin-top: 2px; font-weight: 600; }
+  .hero-sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .hero-metrics { flex: 2 1 300px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .hero-metric {
+    background: var(--panel2); border: 1px solid var(--border); border-radius: 12px;
+    padding: 12px 14px; display: flex; flex-direction: column; justify-content: center; min-width: 0;
+  }
+  .hero-metric .k { font-size: 11px; color: var(--muted); }
+  .hero-metric .v { font-size: 16px; font-weight: 700; margin-top: 3px; line-height: 1.3; word-break: break-all; }
+  .hero-metric .v.red { color: var(--red); }
+  .stat-live {
+    display: none; margin-top: 14px; padding: 11px 15px; border-radius: 10px; font-size: 13px; line-height: 1.6;
+    background: linear-gradient(90deg, rgba(255,93,93,.18), rgba(255,171,61,.1));
+    border: 1px solid rgba(255,93,93,.55); color: #ffd9d9;
+    animation: statLivePulse 1.8s ease-in-out infinite;
+  }
+  @keyframes statLivePulse {
+    0%, 100% { border-color: rgba(255,93,93,.55); box-shadow: 0 0 0 0 rgba(255,93,93,.16); }
+    50% { border-color: rgba(255,93,93,.95); box-shadow: 0 0 16px 3px rgba(255,93,93,.22); }
+  }
+  .bar-list { display: block; }
+  .bar-row {
+    display: grid; grid-template-columns: 118px 1fr 148px; gap: 12px; align-items: center;
+    padding: 7px 0; border-bottom: 1px dashed var(--border); font-size: 13px;
+  }
+  .bar-row:last-child { border-bottom: none; }
+  .bar-row.today .bar-label { color: var(--text); font-weight: 700; }
+  .bar-label { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+  .bar-label .tag { display: inline-block; margin-left: 5px; padding: 0 6px; border-radius: 999px; font-size: 10.5px; background: var(--accent2); color: #fff; vertical-align: 1px; }
+  .bar-track { height: 9px; background: var(--panel2); border: 1px solid var(--border); border-radius: 999px; overflow: hidden; }
+  .bar-track.lg { height: 13px; }
+  .bar-fill { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #ff8a5c, var(--red)); transition: width .6s ease; }
+  .bar-fill.ok { background: linear-gradient(90deg, #34c77b, #4f8cff); }
+  .bar-val { text-align: right; color: var(--text); white-space: nowrap; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .bar-val .sub { color: var(--muted); font-weight: 400; }
+  .bar-val.zero { color: var(--muted); font-weight: 400; }
+  .ev-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 2px; border-bottom: 1px dashed var(--border); font-size: 13px; }
+  .ev-row:last-child { border-bottom: none; }
+  .ev-time { color: var(--text); font-variant-numeric: tabular-nums; }
+  .ev-time .arr { color: var(--muted); margin: 0 5px; }
+  .ev-badge { background: rgba(255,93,93,.12); border: 1px solid rgba(255,93,93,.35); color: var(--red); border-radius: 999px; padding: 2px 11px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+  .stat-empty { color: var(--muted); text-align: center; padding: 16px 0 10px; font-size: 13px; }
   @media (max-width: 780px) {
     .app { flex-direction: column; }
     .sidebar { width: 100%; border-right: none; border-bottom: 1px solid var(--border); display: flex; overflow-x: auto; padding: 10px; }
     .brand { display: none; }
     .nav-item { white-space: nowrap; }
     .status-grid { grid-template-columns: 1fr; }
+    .stat-hero { flex-direction: column; }
+    .hero-metrics { grid-template-columns: repeat(3, 1fr); }
+    .bar-row { grid-template-columns: 1fr; gap: 4px; padding: 9px 0; }
+    .bar-val { text-align: left; }
+    .ev-row { flex-wrap: wrap; }
     .main { padding: 18px 14px 60px; }
   }
+  /* ---------- 统计视图切换 ---------- */
+  .view-switch { display:flex; gap:8px; margin:2px 0 14px; flex-wrap:wrap; }
+  .view-switch .btn { flex:1 1 120px; text-align:center; padding:8px 10px; font-size:13px; }
+  .view-switch .btn.active { background:var(--accent2); border-color:var(--accent2); color:#fff; font-weight:700; }
+  .view-live { display:none; margin-bottom:14px; padding:11px 15px; border-radius:10px; font-size:13px; line-height:1.6;
+    background:linear-gradient(90deg, rgba(255,93,93,.18), rgba(255,171,61,.1));
+    border:1px solid rgba(255,93,93,.55); color:#ffd9d9; animation:statLivePulse 1.8s ease-in-out infinite; }
+  @keyframes statLivePulse { 0%,100%{border-color:rgba(255,93,93,.55);box-shadow:0 0 0 0 rgba(255,93,93,.16)} 50%{border-color:rgba(255,93,93,.95);box-shadow:0 0 16px 3px rgba(255,93,93,.22)} }
+
+  /* ============ 视图 A · 战报 (.vb) ============ */
+  .vb .hero { margin:0; border-radius:16px; padding:22px 24px; position:relative; overflow:hidden;
+    background:linear-gradient(135deg, rgba(255,93,93,.15), rgba(255,93,93,.03) 55%, rgba(79,140,255,.05));
+    border:1px solid rgba(255,93,93,.32); }
+  .vb .hero.good { background:linear-gradient(135deg, rgba(52,199,123,.13), rgba(52,199,123,.02) 55%, rgba(79,140,255,.05)); border-color:rgba(52,199,123,.3); }
+  .vb .hero .glow { position:absolute; right:-60px; top:-80px; width:240px; height:240px; border-radius:50%;
+    background:radial-gradient(circle, rgba(255,93,93,.18), transparent 65%); pointer-events:none; }
+  .vb .hero.good .glow { background:radial-gradient(circle, rgba(52,199,123,.15), transparent 65%); }
+  .vb .hero .row { display:flex; gap:18px; flex-wrap:wrap; align-items:center; position:relative; }
+  .vb .hstat { flex:1 1 240px; }
+  .vb .hstat .lb { font-size:11.5px; letter-spacing:.13em; color:var(--muted); font-weight:600; }
+  .vb .hstat .big { font-size:46px; font-weight:800; line-height:1.15; color:var(--red); }
+  .vb .hero.good .hstat .big { color:var(--green); }
+  .vb .hstat .big .u { font-size:17px; color:var(--muted); font-weight:600; margin-left:3px; }
+  .vb .hstat .tx { font-size:13.5px; color:#f3c9c9; margin-top:2px; }
+  .vb .hero.good .hstat .tx { color:#bfe9d4; }
+  .vb .hstat .tx b { color:#ffd9d9; }
+  .vb .hero.good .hstat .tx b { color:#d2f3e2; }
+  .vb .hmeta { flex:1 1 200px; display:flex; flex-direction:column; gap:8px; }
+  .vb .hcell { background:rgba(20,23,31,.55); border:1px solid var(--border); border-radius:10px; padding:8px 13px; }
+  .vb .hcell .k { font-size:10.5px; color:var(--muted); }
+  .vb .hcell .v { font-size:15px; font-weight:700; }
+  .vb .hcell .v small { color:var(--muted); font-weight:500; font-size:11.5px; }
+  .vb .bx { margin-top:16px; }
+  .vb .bx h4 { font-size:12.5px; font-weight:700; margin-bottom:10px; display:flex; align-items:center; gap:7px; }
+  .vb .bx h4 .hint { margin-left:auto; font-weight:400; font-size:11px; color:var(--muted); }
+  .vb .bars { display:flex; align-items:flex-end; gap:9px; height:118px; padding:4px 0 0; }
+  .vb .bar { flex:1; display:flex; flex-direction:column; justify-content:flex-end; align-items:center; gap:5px; height:100%; min-width:0; }
+  .vb .bar .col { width:100%; max-width:44px; border-radius:6px 6px 3px 3px; min-height:3px; background:var(--red); }
+  .vb .bar .col.l1 { background:linear-gradient(180deg,#ffe08a,#ffc93c); }
+  .vb .bar .col.l2 { background:linear-gradient(180deg,#ffb37a,#ff9a5c); }
+  .vb .bar .col.l3 { background:linear-gradient(180deg,#ff8a7a,#ff5d5d); }
+  .vb .bar .col.l4 { background:linear-gradient(180deg,#ff8ab0,#e0406f); }
+  .vb .bar .col.zero { background:var(--panel2); border:1px dashed var(--border); }
+  .vb .bar.today .col { box-shadow:0 0 0 1px var(--red), 0 0 16px rgba(255,93,93,.45); }
+  .vb .bar.today .col.zero { box-shadow:0 0 0 1px var(--green), 0 0 14px rgba(52,199,123,.4); }
+  .vb .bar .lb { font-size:10.5px; color:var(--muted); white-space:nowrap; }
+  .vb .bar.today .lb { color:var(--text); font-weight:700; }
+  .vb .bar .mn { font-size:10px; color:var(--muted); }
+  .vb .vb-cols { display:grid; grid-template-columns:1fr 1.15fr; gap:14px; margin-top:14px; }
+  @media (max-width:760px){ .vb .vb-cols{grid-template-columns:1fr} }
+  .vb .vcard { background:var(--panel); border:1px solid var(--border); border-radius:13px; padding:15px 17px; }
+  .vb .vcard h4 { font-size:12.5px; font-weight:700; margin-bottom:10px; }
+  .vb .mrow { display:flex; align-items:center; gap:9px; padding:6.5px 0; border-bottom:1px dashed var(--border); font-size:12px; }
+  .vb .mrow:last-child { border-bottom:none; }
+  .vb .mrow .mname { width:76px; font-weight:600; flex-shrink:0; }
+  .vb .mrow .mt { flex:1; height:8px; border-radius:99px; background:var(--panel2); overflow:hidden; }
+  .vb .mrow .mt i { display:block; height:100%; border-radius:99px; background:linear-gradient(90deg,#ff8a5c,var(--red)); }
+  .vb .mrow .mcnt { color:var(--muted); text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
+  .vb .mrow .mcnt b { color:var(--red); }
+  .vb .tl { position:relative; padding-left:18px; }
+  .vb .tl::before { content:""; position:absolute; left:5px; top:3px; bottom:3px; width:1px; background:linear-gradient(var(--red), var(--border)); }
+  .vb .tli { position:relative; padding:5.5px 0; display:flex; justify-content:space-between; gap:10px; font-size:12px; }
+  .vb .tli::before { content:""; position:absolute; left:-17px; top:10px; width:6px; height:6px; border-radius:50%; background:var(--red); box-shadow:0 0 6px rgba(255,93,93,.8); }
+  .vb .tli .tm { font-variant-numeric:tabular-nums; }
+  .vb .tli .tm i { color:var(--muted); font-style:normal; margin:0 4px; }
+  .vb .tli .du { color:var(--red); font-weight:700; white-space:nowrap; }
+  .vb .stat-empty { color:var(--muted); text-align:center; padding:20px 0 8px; font-size:12.5px; }
+  /* ============ 视图 B · 热力图 (.hmv) ============ */
+  .hmv .kpis { display:grid; grid-template-columns:repeat(4,1fr); gap:9px; }
+  @media (max-width:640px){ .hmv .kpis{grid-template-columns:repeat(2,1fr)} }
+  .hmv .kpi { background:var(--panel); border:1px solid var(--border); border-radius:11px; padding:11px 14px; }
+  .hmv .kpi .k { font-size:10.5px; color:var(--muted); letter-spacing:.05em; }
+  .hmv .kpi .v { font-size:21px; font-weight:800; margin-top:2px; line-height:1.15; }
+  .hmv .kpi .v small { font-size:12px; color:var(--muted); font-weight:600; margin-left:2px; }
+  .hmv .kpi .v.red { color:var(--red); }
+  .hmv .kpi .v.green { color:var(--green); }
+  .hmv .kpi .d { font-size:10.5px; color:var(--muted); margin-top:1px; }
+  .hmv .hx { margin-top:14px; }
+  .hmv .hx h4 { font-size:12.5px; font-weight:700; margin-bottom:12px; display:flex; align-items:center; gap:7px; }
+  .hmv .hx h4 .hint { margin-left:auto; font-weight:400; font-size:11px; color:var(--muted); }
+  .hmv .hm-scroll { overflow-x:auto; padding-bottom:6px; }
+  .hmv .hm { display:grid; grid-auto-flow:column; grid-template-rows:repeat(7, 11px); gap:3px; width:max-content; margin:0 auto; }
+  .hmv .hm .cell { width:11px; height:11px; border-radius:3px; background:#1d5238; }
+  .hmv .hm .cell.l1 { background:#7a3a1f; } .hmv .hm .cell.l2 { background:#b34a24; }
+  .hmv .hm .cell.l3 { background:#e0523a; } .hmv .hm .cell.l4 { background:#ff5d5d; }
+  .hmv .hm .cell.future { background:transparent; }
+  .hmv .hm .cell.weekend { background:#262b36; }
+  .hmv .hm .cell:hover { outline:1px solid #fff; outline-offset:1px; }
+  .hmv .legend { display:flex; align-items:center; justify-content:center; gap:6px; margin-top:12px; font-size:11px; color:var(--muted); flex-wrap:wrap; }
+  .hmv .legend i { width:11px; height:11px; border-radius:3px; }
+  .hmv .months { display:flex; justify-content:space-between; font-size:10px; color:var(--muted); padding:0 2px; margin-bottom:5px; max-width:640px; margin-left:auto; margin-right:auto; }
+  .hmv .hcols { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:12px; }
+  @media (max-width:760px){ .hmv .hcols{grid-template-columns:1fr} }
+  .hmv .vcard { background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:14px 16px; }
+  .hmv .vcard h4 { font-size:12.5px; font-weight:700; margin-bottom:10px; }
+  .hmv .mrow { display:flex; align-items:center; gap:9px; padding:6.5px 0; border-bottom:1px dashed var(--border); font-size:12px; }
+  .hmv .mrow:last-child { border-bottom:none; }
+  .hmv .mrow .mn { width:86px; font-weight:600; flex-shrink:0; }
+  .hmv .mrow .mt { flex:1; height:9px; background:var(--panel2); border-radius:99px; overflow:hidden; }
+  .hmv .mrow .mt i { display:block; height:100%; background:linear-gradient(90deg,#c24853,#ff7a5c); border-radius:99px; }
+  .hmv .mrow .mc { text-align:right; color:var(--muted); white-space:nowrap; font-variant-numeric:tabular-nums; }
+  .hmv .mrow .mc b { color:var(--text); }
+  .hmv .note-txt { color:var(--muted); font-size:12.5px; line-height:1.85; }
+  .hmv .note-txt b { color:var(--text); }
+  .hmv .stat-empty { color:var(--muted); text-align:center; padding:20px 0 8px; font-size:12.5px; }
+
+  /* ============ 视图 C · 控制台 (.cnv) ============ */
+  .cnv .kpis { display:grid; grid-template-columns:repeat(4,1fr); gap:1px; background:var(--border); border:1px solid var(--border); border-radius:10px; overflow:hidden; }
+  @media (max-width:640px){ .cnv .kpis{grid-template-columns:repeat(2,1fr)} }
+  .cnv .kpi { background:var(--panel); padding:10px 13px 9px; }
+  .cnv .kpi .k { font-size:10px; color:var(--muted); letter-spacing:.08em; }
+  .cnv .kpi .v { font-size:19px; font-weight:750; font-variant-numeric:tabular-nums; margin-top:1px; }
+  .cnv .kpi .v .u { font-size:10.5px; color:var(--muted); font-weight:600; margin-left:1px; }
+  .cnv .kpi .d { font-size:10px; color:var(--muted); }
+  .cnv .kpi .d .up { color:var(--red); } .cnv .kpi .d .down { color:var(--green); }
+  .cnv .cx { margin-top:13px; }
+  .cnv .cx .sh { display:flex; align-items:center; gap:8px; margin-bottom:7px; }
+  .cnv .cx .sh .st { font-size:10.5px; font-weight:700; letter-spacing:.09em; color:var(--muted); }
+  .cnv .tbl { background:var(--panel); border:1px solid var(--border); border-radius:10px; overflow:hidden; }
+  .cnv .tbl + .tbl { margin-top:12px; }
+  .cnv .row { display:grid; grid-template-columns:1fr 2fr 110px 80px; gap:12px; align-items:center;
+    padding:7px 13px; border-bottom:1px solid #1b1f2a; font-size:12.5px; }
+  .cnv .row:last-child { border-bottom:none; }
+  .cnv .row:hover { background:var(--panel2); }
+  .cnv .row.head { color:var(--muted); font-size:10px; letter-spacing:.06em; padding:5px 13px; }
+  .cnv .row.head:hover { background:transparent; }
+  .cnv .row .c1 { font-variant-numeric:tabular-nums; }
+  .cnv .row .c1 .dot { display:inline-block; width:6px; height:6px; border-radius:50%; background:var(--red); margin-right:7px; vertical-align:1px; }
+  .cnv .row.today .c1 { color:#fff; font-weight:600; }
+  .cnv .row .num { text-align:right; font-variant-numeric:tabular-nums; }
+  .cnv .row .num b { font-weight:700; }
+  .cnv .row .num small { color:var(--muted); font-size:11px; }
+  .cnv .mrows { display:block; }
+  .cnv .month-row { display:grid; grid-template-columns:64px 1fr 96px 56px; gap:10px; align-items:center;
+    padding:6.5px 13px; border-bottom:1px solid #1b1f2a; font-size:12.5px; font-variant-numeric:tabular-nums; }
+  .cnv .month-row:last-child { border-bottom:none; }
+  .cnv .month-row:hover { background:var(--panel2); }
+  .cnv .month-row .mk { font-weight:600; }
+  .cnv .month-row .mk.cur { color:#fff; }
+  .cnv .month-row .mt { height:7px; background:var(--border); border-radius:99px; overflow:hidden; }
+  .cnv .month-row .mt i { display:block; height:100%; border-radius:99px; background:linear-gradient(90deg,#f0616d,#ff8d6b); }
+  .cnv .month-row .td { text-align:right; color:var(--muted); }
+  .cnv .month-row .td b { color:var(--text); }
+  .cnv .month-row .tr { text-align:right; }
+  .cnv .month-row .tr .up { color:var(--red); font-size:11.5px; }
+  .cnv .month-row .tr .down { color:var(--green); font-size:11.5px; }
+  .cnv .month-row .tr .flat { color:var(--muted); font-size:11px; }
+  .cnv .log-row { display:grid; grid-template-columns:1fr 110px 90px; gap:10px; align-items:center;
+    padding:5.5px 13px; border-bottom:1px solid #1b1f2a; font-size:12px; }
+  .cnv .log-row:last-child { border-bottom:none; }
+  .cnv .log-row:hover { background:var(--panel2); }
+  .cnv .log-row .tm { font-variant-numeric:tabular-nums; }
+  .cnv .log-row .dow { color:var(--muted); text-align:right; }
+  .cnv .log-row .du { text-align:right; font-weight:700; color:#ff9ba3; font-variant-numeric:tabular-nums; }
+  .cnv .stat-empty { color:var(--muted); text-align:center; padding:18px 0 6px; font-size:12px; }
 </style>
 </head>
 <body>
@@ -209,6 +429,7 @@
     <div class="nav-item" data-tab="sites"><span class="dot"></span>网站屏蔽</div>
     <div class="nav-item" data-tab="processes"><span class="dot"></span>进程屏蔽</div>
     <div class="nav-item" data-tab="whitelist"><span class="dot"></span>白名单</div>
+    <div class="nav-item" data-tab="stats"><span class="dot"></span>统计</div>
     <div class="nav-item" data-tab="sync"><span class="dot"></span>账号 / 同步</div>
     <div class="nav-item" data-tab="about"><span class="dot"></span>关于 / 卸载</div>
   </aside>
@@ -376,6 +597,25 @@
       </div>
     </section>
 
+    <!-- ============ 统计 ============ -->
+    <section class="panel" id="panel-stats">
+      <div class="card">
+        <h3>📊 破戒统计</h3>
+        <div class="hint">统计你点「✅ 临时解除」的次数与时长：从解除开始计，到恢复屏蔽 / 被清除 / 强制压过时结算。强制模式下无法解除、关闭总开关或修改计划均不计入；数据只存本机，不同步云端。</div>
+        <div class="view-switch" id="statsViewSwitch">
+          <button class="btn active" data-view="battle" title="叙事大屏：今日状态 + 7 天柱状 + 月度/时间线">🗡 战报</button>
+          <button class="btn" data-view="heatmap" title="年热力图：一眼看清每天 / 哪个月失控 + 洞察">🔥 热力图</button>
+          <button class="btn" data-view="console" title="表格控制台：KPI + 环比箭头 + 明细日志">▤ 控制台</button>
+        </div>
+        <div class="view-live" id="statLive"></div>
+        <div id="statsViewHost"></div>
+        <div class="btn-row">
+          <button class="btn" id="statsRefreshBtn">🔄 刷新</button>
+          <button class="btn red" id="statsClearBtn">🗑 清空统计</button>
+        </div>
+      </div>
+    </section>
+
     <!-- ============ 账号 / 同步 ============ -->
     <section class="panel" id="panel-sync">
       <div class="card" id="syncLoginCard">
@@ -462,6 +702,7 @@
 let cfg = null;
 let status = null;
 let acct = null;
+let stats = null;
 let dirty = false;
 
 const $ = s => document.querySelector(s);
@@ -508,6 +749,7 @@ const PROC_PRESETS = [
   { label: "微信", names: ["WeChat","Weixin*"] },
   { label: "QQ", names: ["QQ","TIM"] },
   { label: "Steam", names: ["steam","steamwebhelper"] },
+  { label: "无畏契约 (VALORANT)", names: ["VALORANT","RiotClientServices"] },
   { label: "Discord", names: ["discord"] },
   { label: "Slack", names: ["slack"] },
   { label: "网易云音乐", names: ["cloudmusic"] },
@@ -518,10 +760,11 @@ const DAY_LABELS = ["一","二","三","四","五","六","日"];
 /* ================= 加载 ================= */
 async function load() {
   try {
-    const [c, s, a] = await Promise.all([api("/api/config"), api("/api/status"), api("/api/account")]);
+    const [c, s, a, st] = await Promise.all([api("/api/config"), api("/api/status"), api("/api/account"), api("/api/stats")]);
     cfg = c.config;
     status = s;
     acct = a.account;
+    stats = st.stats;
     $("#verTag").textContent = s.version;
     $("#aboutVer").textContent = "v" + s.version;
     $("#aboutPort").textContent = (c.config.web && c.config.web.port) || 8737;
@@ -542,6 +785,7 @@ function renderAll() {
   renderBrowser();
   renderProcesses();
   renderWhitelist();
+  renderStatsNew();
   renderSync();
 }
 
@@ -723,6 +967,410 @@ function renderSync() {
   $("#syncAutoSwitch").checked = !!acct.autoPush;
 }
 
+/* ================= 临时解除统计 ================= */
+const DAY_NAMES = ["周日","周一","周二","周三","周四","周五","周六"];
+function statDayStr(d) {
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+}
+function statFmtDur(min) {
+  if (!min) return "0 分钟";
+  if (min < 60) return min + " 分钟";
+  const h = Math.floor(min / 60), m = min % 60;
+  return h + " 小时" + (m ? " " + m + " 分钟" : "");
+}
+function statFmtShort(min) {
+  if (!min) return "0 分";
+  if (min < 60) return min + " 分";
+  const h = Math.floor(min / 60), m = min % 60;
+  return h + " 小时" + (m ? " " + m + " 分" : "");
+}
+
+function renderStats() {
+  const st = stats || { open: null, events: [] };
+  const evs = (st.events || []).slice().sort((a, b) => String(a.start) < String(b.start) ? -1 : 1);
+  const now = new Date();
+  const today = statDayStr(now);
+  const weekStart = statDayStr(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6));
+
+  // 聚合: 事件归属其 start 所在日
+  let todayN = 0, todayMin = 0, totalN = 0, totalMin = 0;
+  const weekMap = {};    // 日期 -> {n,min}
+  const monthMap = {};   // yyyy-MM -> {n,min}
+  const yearMap = {};    // yyyy -> {n,min}
+  const addTo = (map, k, min) => { if (!map[k]) map[k] = { n: 0, min: 0 }; map[k].n++; map[k].min += min; };
+  for (const e of evs) {
+    totalN++; totalMin += (e.min || 0);
+    const d = String(e.start).slice(0, 10);
+    if (d === today) { todayN++; todayMin += (e.min || 0); }
+    if (d >= weekStart && d <= today) addTo(weekMap, d, (e.min || 0));
+    addTo(monthMap, d.slice(0, 7), (e.min || 0));   // yyyy-MM
+    addTo(yearMap, d.slice(0, 4), (e.min || 0));    // yyyy
+  }
+
+  // 总览 hero
+  const sum = $("#statSummary");
+  const weekN = Object.values(weekMap).reduce((a, x) => a + x.n, 0);
+  const weekMin = Object.values(weekMap).reduce((a, x) => a + x.min, 0);
+  const curKey = today.slice(0, 7);
+  const curAgg = monthMap[curKey];
+  const clean = !todayN;
+  const heroCleanNote = todayN ? "" : `<div class="hero-sub">今天没有破戒，继续保持 👍</div>`;
+  sum.innerHTML =
+    `<div class="stat-hero">
+       <div class="hero-main ${clean ? "clean" : ""}">
+         <div class="hero-label">今日解除</div>
+         <div class="hero-count">${todayN}<span class="unit">次</span></div>
+         <div class="hero-dur">${todayMin ? "共 " + statFmtDur(todayMin) : "0 分钟"}</div>
+         ${heroCleanNote}
+       </div>
+       <div class="hero-metrics">
+         <div class="hero-metric"><div class="k">近 7 天</div><div class="v ${weekN ? "red" : ""}">${weekN} 次 · ${statFmtShort(weekMin)}</div></div>
+         <div class="hero-metric"><div class="k">本月 (${+curKey.slice(5)} 月)</div><div class="v ${curAgg && curAgg.n ? "red" : ""}">${curAgg ? curAgg.n + " 次 · " + statFmtShort(curAgg.min) : "0 次"}</div></div>
+         <div class="hero-metric"><div class="k">历史累计</div><div class="v ${totalN ? "red" : ""}">${totalN} 次 · ${statFmtShort(totalMin)}</div></div>
+       </div>
+     </div>`;
+
+  // 正在解除中
+  const live = $("#statLive");
+  if (st.open && st.open.start) {
+    let txt = "⏳ <b>正在临时解除中</b> — 自 " + esc(st.open.start) + " 开始，本次尚未结算，恢复屏蔽后自动计入统计。";
+    if (st.open.until) {
+      const u = new Date(st.open.until);
+      if (!isNaN(u)) txt += " 当前解除至 " + u.toLocaleString();
+    }
+    live.innerHTML = txt;
+    live.style.display = "block";
+  } else { live.style.display = "none"; live.innerHTML = ""; }
+
+  // ---------- 横向条形渲染 ----------
+  const barRows = (rows, maxMin, lg) => rows.map(r => {
+    const pct = r.min > 0 && maxMin > 0 ? Math.max(4, Math.round(r.min / maxMin * 100)) : 0;
+    return `<div class="bar-row${r.today ? " today" : ""}">
+      <div class="bar-label">${r.label}${r.tag ? `<span class="tag">${r.tag}</span>` : ""}</div>
+      <div class="bar-track${lg ? " lg" : ""}"><span class="bar-fill" style="width:${pct}%"></span></div>
+      <div class="bar-val${r.zero ? " zero" : ""}">${r.val}</div>
+    </div>`;
+  }).join("");
+  const statEmpty = t => `<div class="stat-empty">${t}</div>`;
+
+  // 近 7 天
+  const wkRows = [], wkMins = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+    const ds = statDayStr(d);
+    const agg = weekMap[ds];
+    const isToday = ds === today;
+    wkRows.push({
+      label: ds.slice(5) + " " + DAY_NAMES[d.getDay()], tag: isToday ? "今天" : "", today: isToday,
+      min: agg ? agg.min : 0,
+      val: agg ? `${agg.n} 次 · ${statFmtShort(agg.min)}` : "无解除", zero: !agg,
+    });
+    if (agg) wkMins.push(agg.min);
+  }
+  $("#statWeek").innerHTML = barRows(wkRows, Math.max(1, ...wkMins));
+
+  // 近 12 个月(有记录的月份, 倒序)
+  const mk = Object.keys(monthMap).sort().reverse().slice(0, 12);
+  const mMins = mk.map(k => monthMap[k].min);
+  $("#statMonths").innerHTML = mk.length
+    ? barRows(mk.map(k => {
+        const a = monthMap[k];
+        return {
+          label: k.slice(0, 4) + " 年 " + (+k.slice(5)) + " 月", tag: k === today.slice(0, 7) ? "本月" : "",
+          today: k === today.slice(0, 7), min: a.min,
+          val: `${a.n} 次 · ${statFmtShort(a.min)}`,
+        };
+      }), Math.max(1, ...mMins))
+    : statEmpty("暂无按月记录 — 点过「临时解除」后按自然月汇总");
+
+  // 按年
+  const yk = Object.keys(yearMap).sort().reverse();
+  const yMins = yk.map(k => yearMap[k].min);
+  $("#statYears").innerHTML = yk.length
+    ? barRows(yk.map(k => {
+        const a = yearMap[k];
+        return { label: k + " 年", min: a.min, val: `${a.n} 次 · ${statFmtShort(a.min)}` };
+      }), Math.max(1, ...yMins), true)
+    : statEmpty("暂无按年记录");
+
+  // 最近记录(倒序)
+  const recent = evs.slice(-15).reverse();
+  $("#statRecent").innerHTML = recent.length ? recent.map(e => {
+    const s = String(e.start), t = String(e.end);
+    const sameDay = s.slice(0, 10) === t.slice(0, 10);
+    return `<div class="ev-row">
+      <span class="ev-time">${esc(s.slice(5))}<span class="arr">→</span>${esc(sameDay ? t.slice(11, 16) : t.slice(5, 16))}</span>
+      <span class="ev-badge">${statFmtDur(e.min)}</span>
+    </div>`;
+  }).join("") : statEmpty("暂无记录 — 点「临时解除」后会自动出现在这里");
+}
+
+/* ================= 统计 · 三视图 (战报/热力图/控制台) ================= */
+let statsView = "battle";
+try { statsView = localStorage.getItem("afsStatsView") || "battle"; } catch (e) {}
+
+// 从真实 stats({open,events:[{start,end,min}]}) 构建聚合
+function statsAgg() {
+  const st = stats || { open: null, events: [] };
+  const evs = (st.events || []).slice().sort((a, b) => String(a.start) < String(b.start) ? -1 : 1);
+  const now = new Date();
+  const today = statDayStr(now);
+  const dayMin = {}, dayN = {}, mon = {}, yr = {};
+  evs.forEach(e => {
+    const d = String(e.start).slice(0, 10), m = (e.min || 0);
+    dayMin[d] = (dayMin[d] || 0) + m;
+    dayN[d] = (dayN[d] || 0) + 1;
+    const mk = d.slice(0, 7);
+    mon[mk] = mon[mk] || { n: 0, min: 0 }; mon[mk].n++; mon[mk].min += m;
+    const yk = d.slice(0, 4);
+    yr[yk] = yr[yk] || { n: 0, min: 0 }; yr[yk].n++; yr[yk].min += m;
+  });
+  let totN = 0, totMin = 0;
+  evs.forEach(e => { totN++; totMin += (e.min || 0); });
+  const week = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+    const k = statDayStr(d);
+    week.push({ key: k, min: dayMin[k] || 0, n: dayN[k] || 0, dow: DAY_NAMES[d.getDay()], today: k === today });
+  }
+  const weekAgg = week.reduce((a, x) => ({ n: a.n + x.n, min: a.min + x.min }), { n: 0, min: 0 });
+  // 连续守住天数: 自上次破戒日(最后一条事件)到今天的整天数, 今天破戒则为 0;
+  // 完全没有记录 -> -1 (界面显示 "—")
+  let streak = 0;
+  if (evs.length) {
+    const lastKey = String(evs[evs.length - 1].start).slice(0, 10);
+    const t0 = new Date(today + "T00:00:00"), l0 = new Date(lastKey + "T00:00:00");
+    streak = Math.max(0, Math.round((t0 - l0) / 86400000));
+  } else { streak = -1; }
+  const recent = evs.slice(-10).reverse();
+  return { st, evs, now, today, dayMin, dayN, mon, yr, totN, totMin,
+    todayMin: dayMin[today] || 0, todayN: dayN[today] || 0,
+    week, weekAgg, curKey: today.slice(0, 7), streak, recent };
+}
+
+function renderStatsLive(a) {
+  const live = document.getElementById("statLive");
+  const o = a.st.open;
+  if (o && o.start) {
+    let t = "⏳ <b>正在临时解除中</b> — 自 " + esc(o.start) + " 开始，恢复屏蔽后自动计入统计。";
+    if (o.until) { const u = new Date(o.until); if (!isNaN(u)) t += " 当前解除至 " + u.toLocaleString(); }
+    live.innerHTML = t; live.style.display = "block";
+  } else { live.style.display = "none"; live.innerHTML = ""; }
+}
+
+function renderStatsNew() {
+  const host = document.getElementById("statsViewHost");
+  if (!host) return;
+  const a = statsAgg();
+  renderStatsLive(a);
+  host.innerHTML = statsView === "heatmap" ? statsViewHeatmap(a)
+    : statsView === "console" ? statsViewConsole(a)
+    : statsViewBattle(a);
+  try {
+    document.querySelectorAll("#statsViewSwitch .btn").forEach(b => {
+      b.classList.toggle("active", b.dataset.view === statsView);
+    });
+  } catch (e) {}
+}
+
+/* ---------- 视图 A · 战报 ---------- */
+function statsViewBattle(a) {
+  const { todayN, todayMin, week, weekAgg, mon, curKey, totN, totMin, recent } = a;
+  const good = !todayN;
+  const curM = mon[curKey] || { n: 0, min: 0 };
+  const mx = Math.max(1, ...week.map(w => w.min));
+  const colLv = m => m <= 0 ? 0 : m < 30 ? 1 : m < 60 ? 2 : m < 90 ? 3 : 4;
+  const bars = week.map(w =>
+    `<div class="bar${w.today ? " today" : ""}">
+       <div class="mn">${w.min ? statFmtShort(w.min) : ""}</div>
+       <div class="col${w.min ? " l" + colLv(w.min) : " zero"}" style="height:${w.min ? Math.max(6, Math.round(w.min / mx * 100)) : 2}%"></div>
+       <div class="lb">${w.today ? "今天" : (w.key.slice(5) + " " + w.dow)}</div>
+     </div>`).join("");
+  const mks = Object.keys(mon).sort().reverse().slice(0, 6);
+  const mmx = Math.max(1, ...mks.map(k => mon[k].min));
+  const monthsHtml = mks.length ? mks.map(k => {
+    const m = mon[k];
+    return `<div class="mrow"><div class="mname">${k.slice(0, 4)}/${String(+k.slice(5)).padStart(2, "0")}</div>
+      <div class="mt"><i style="width:${Math.round(m.min / mmx * 100)}%"></i></div>
+      <div class="mcnt">${m.n} 次 · <b>${statFmtShort(m.min)}</b></div></div>`;
+  }).join("") : `<div class="stat-empty">还没有按月记录，先点一次「临时解除」试试？</div>`;
+  const tlHtml = recent.length ? recent.map(e => {
+    const s = String(e.start), t = String(e.end);
+    const same = s.slice(0, 10) === t.slice(0, 10);
+    return `<div class="tli"><span class="tm">${esc(s.slice(5))}<i>→</i>${esc(same ? t.slice(11, 16) : t.slice(5, 16))}</span><span class="du">${statFmtDur(e.min)}</span></div>`;
+  }).join("") : `<div class="stat-empty">暂无记录 — 点「临时解除」后会自动出现在这里</div>`;
+  return `<div class="vb">
+    <div class="hero${good ? " good" : ""}"><div class="glow"></div><div class="row">
+      <div class="hstat">
+        <div class="lb">今日已破戒</div>
+        <div class="big">${todayN}<span class="u">次</span></div>
+        <div class="tx">${good ? "今天还没有破戒，<b>守住了</b> 🎉" : "已破戒 <b>" + statFmtDur(todayMin) + "</b>，管住手。"}</div>
+      </div>
+      <div class="hmeta">
+        <div class="hcell"><div class="k">近 7 天</div><div class="v">${weekAgg.n} 次 · <small>${statFmtShort(weekAgg.min)}</small></div></div>
+        <div class="hcell"><div class="k">本月 (${+curKey.slice(5)} 月)</div><div class="v">${curM.n} 次 · <small>${statFmtShort(curM.min)}</small></div></div>
+        <div class="hcell"><div class="k">累计</div><div class="v">${totN} 次 · <small>${statFmtShort(totMin)}</small></div></div>
+      </div>
+    </div></div>
+    <div class="bx"><h4>近 7 天 <span class="hint">柱高 = 破戒时长</span></h4><div class="bars">${bars}</div></div>
+    <div class="vb-cols">
+      <div class="vcard"><h4>按月 · 近 6 个月</h4>${monthsHtml}</div>
+      <div class="vcard"><h4>最近破戒记录</h4><div class="tl">${tlHtml}</div></div>
+    </div>
+  </div>`;
+}
+
+/* ---------- 视图 B · 热力图 ---------- */
+function statsViewHeatmap(a) {
+  const { evs, now, today, dayMin, dayN, mon, yr, totN, totMin, streak } = a;
+  const year = today.slice(0, 4);
+  const yAgg = yr[year] || { n: 0, min: 0 };
+  const curM = mon[today.slice(0, 7)] || { n: 0, min: 0 };
+  const worst = Math.max(0, ...Object.values(dayMin));
+  const avg = totN ? Math.round(totMin / totN) : 0;
+  const kpiRow = `<div class="kpis">
+    <div class="kpi"><div class="k">${year} 年累计</div><div class="v red">${yAgg.n}<small>次</small></div><div class="d">${statFmtDur(yAgg.min)}</div></div>
+    <div class="kpi"><div class="k">平均每次</div><div class="v">${avg}<small>分钟</small></div><div class="d">单日最长 ${worst ? statFmtDur(worst) : "—"}</div></div>
+    <div class="kpi"><div class="k">本月 (${+today.slice(5, 7)} 月)</div><div class="v red">${curM.n}<small>次</small></div><div class="d">${statFmtDur(curM.min)}</div></div>
+    <div class="kpi"><div class="k">连续守住</div><div class="v ${streak >= 3 ? "green" : ""}">${streak < 0 ? "—" : streak}<small>天</small></div><div class="d">${streak < 0 ? "尚无破戒记录" : (streak === 0 ? "今天破戒了" : "自上次破戒以来")}</div></div>
+  </div>`;
+
+  // 年度热力: 今年 1/1 所在周起, 至今天所在周周六
+  const start = new Date(+year, 0, 1); start.setDate(start.getDate() - start.getDay());
+  const endD = new Date(now); endD.setDate(endD.getDate() + (6 - endD.getDay()));
+  const kf = d => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  const lv = m => m <= 0 ? 0 : m < 30 ? 1 : m < 60 ? 2 : m < 90 ? 3 : 4;
+  const cells = [];
+  for (let d = new Date(start); d <= endD; d.setDate(d.getDate() + 1)) {
+    const key = kf(d), dow = d.getDay(), m = dayMin[key];
+    if (m) cells.push(`<div class="cell l${lv(m)}" title="${key} 破戒 ${m} 分钟"></div>`);
+    else if (d > now) cells.push(`<div class="cell future"></div>`);
+    else if (dow === 0 || dow === 6) cells.push(`<div class="cell weekend" title="${key} 周末 · 未屏蔽"></div>`);
+    else cells.push(`<div class="cell" title="${key} 守住了 ✅"></div>`);
+  }
+  const heatHtml = `<div class="hx"><h4>${year} 年度热力 <span class="hint">悬停格子看当天 · 色越深破戒越久</span></h4>
+    <div class="months">${["1月","2月","3月","4月","5月","6月","7月","8月","9月","10月","11月","12月"].map(m => `<span>${m}</span>`).join("")}</div>
+    <div class="hm-scroll"><div class="hm">${cells.join("")}</div></div>
+    <div class="legend"><span>守住</span><i style="background:#1d5238"></i>
+      <span style="margin-left:12px">破戒</span>
+      <i style="background:#7a3a1f"></i><i style="background:#b34a24"></i><i style="background:#e0523a"></i><i style="background:#ff5d5d"></i> 久
+      <span style="margin-left:12px">周末 <i style="background:#262b36"></i></span>
+    </div></div>`;
+
+  // 月度排行
+  const mks = Object.keys(mon).sort().reverse();
+  const mmx = Math.max(1, ...mks.map(k => mon[k].min));
+  const rankHtml = mks.length ? mks.map(k => {
+    const m = mon[k];
+    return `<div class="mrow"><div class="mn">${k.slice(0, 4)} 年 ${+k.slice(5)} 月</div>
+      <div class="mt"><i style="width:${Math.max(4, Math.round(m.min / mmx * 100))}%"></i></div>
+      <div class="mc">${m.n} 次 · <b>${statFmtDur(m.min)}</b></div></div>`;
+  }).join("") : `<div class="stat-empty">暂无按月记录</div>`;
+
+  // 洞察
+  const ins = [];
+  if (!evs.length) ins.push("还没有任何解除记录。管住自己的第一天，从今天开始。");
+  else {
+    const cur = mon[today.slice(0, 7)] || { n: 0, min: 0 };
+    const pk = today.slice(0, 7).split("-"); pk[1] = String(+pk[1] - 1).padStart(2, "0");
+    if (pk[1] === "00") { pk[0] = String(+pk[0] - 1); pk[1] = "12"; }
+    const prev = mon[pk.join("-")];
+    if (prev && prev.min && cur.min <= prev.min * 0.6) ins.push(`本月 (${cur.n} 次 / ${statFmtDur(cur.min)}) 比上月明显收敛 🎉`);
+    if (streak >= 3) ins.push(`已经连续 <b>${streak} 天</b>没有破戒，节奏不错。`);
+    const sorted = Object.keys(mon).map(k => ({ k, ...mon[k] })).sort((x, y) => y.min - x.min);
+    const top = sorted[0];
+    if (top && top.min) ins.push(`最容易失控的是 <b>${top.k.slice(0, 4)} 年 ${+top.k.slice(5)} 月</b>（${top.n} 次 / ${statFmtDur(top.min)}），回想一下当时发生了什么。`);
+    const dc = [0, 0, 0, 0, 0, 0, 0];
+    evs.forEach(e => { const d = new Date(String(e.start).replace(" ", "T")); if (!isNaN(d)) dc[d.getDay()]++; });
+    const mi = dc.indexOf(Math.max(...dc));
+    if (mi >= 0) ins.push(`破戒多发生在<b>${DAY_NAMES[mi]}</b>，可考虑把该天的屏蔽时段加长。`);
+    if (!ins.length) ins.push("数据量还少，多用几天后这里会出现更多洞察。");
+  }
+  const insightHtml = `<div class="vcard"><h4>洞察</h4><div class="note-txt">${ins.map(t => `<div style="margin:5px 0">· ${t}</div>`).join("")}</div></div>`;
+  const rankCard = `<div class="vcard"><h4>月度排行</h4>${rankHtml}</div>`;
+
+  return `<div class="hmv">${kpiRow}${heatHtml}<div class="hcols">${rankCard}${insightHtml}</div></div>`;
+}
+
+/* ---------- 视图 C · 控制台 ---------- */
+function statsViewConsole(a) {
+  const { evs, today, dayMin, dayN, mon, totN, totMin, week, weekAgg, recent, now } = a;
+  const curM = mon[today.slice(0, 7)] || { n: 0, min: 0 };
+  // 上月键
+  const pk = today.slice(0, 7).split("-"); pk[1] = String(+pk[1] - 1).padStart(2, "0");
+  if (pk[1] === "00") { pk[0] = String(+pk[0] - 1); pk[1] = "12"; }
+  const prevM = mon[pk.join("-")];
+  const live = a.st.open;
+  const kpis = `<div class="kpis">
+    <div class="kpi"><div class="k">今日</div><div class="v">${a.todayN}<span class="u">次</span></div><div class="d">${statFmtShort(a.todayMin)}${live ? " · <span class='up'>● 解除中</span>" : ""}</div></div>
+    <div class="kpi"><div class="k">近 7 天</div><div class="v">${weekAgg.n}<span class="u">次</span></div><div class="d">${statFmtDur(weekAgg.min)} · 日均 ${Math.round(weekAgg.min / 7)} 分</div></div>
+    <div class="kpi"><div class="k">本月 (${+today.slice(5, 7)} 月)</div><div class="v">${curM.n}<span class="u">次</span></div><div class="d">${statFmtDur(curM.min)}${prevM ? (curM.min <= prevM.min ? " · <span class='down'>较上月 ↓</span>" : " · <span class='up'>较上月 ↑</span>") : ""}</div></div>
+    <div class="kpi"><div class="k">累计</div><div class="v">${totN}<span class="u">次</span></div><div class="d">${statFmtDur(totMin)}</div></div>
+  </div>`;
+
+  // spark: 7 天迷你柱, hot 下标高亮
+  const spark = (vals, hot) => {
+    const W = 110, H = 20, max = Math.max(1, ...vals), bw = W / vals.length;
+    return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">` + vals.map((v, i) =>
+      `<rect x="${(i * bw + bw * 0.18).toFixed(1)}" y="${(H - (v ? v / max * (H - 6) : 2)).toFixed(1)}" width="${(bw * 0.64).toFixed(1)}" height="${(v ? Math.max(2, v / max * (H - 6)) : 2).toFixed(1)}" rx="2" fill="${v ? (i === hot ? "#ff8d6b" : "#f0616d") : "#2c3448"}"/>`).join("") + `</svg>`;
+  };
+  const wkVals = week.map(w => w.min);
+  const weekRows = week.map((w, i) =>
+    `<div class="row${w.today ? " today" : ""}">
+      <span class="c1">${w.today ? '<span class="dot"></span>' : ""}${w.key.slice(5)} ${w.dow}${w.today ? " (今天)" : ""}</span>
+      <span>${spark(wkVals, i)}</span>
+      <span class="num"><b>${w.min ? statFmtShort(w.min) : "—"}</b></span>
+      <span class="num"><small>${w.n ? w.n + " 次" : ""}</small></span>
+    </div>`).join("");
+  const emptyRow = `<div class="stat-empty">还没有任何解除记录</div>`;
+
+  // 月表（倒序, 环比）
+  const mks = Object.keys(mon).sort().reverse();
+  const mmx = Math.max(1, ...mks.map(k => mon[k].min));
+  const monthRows = mks.length ? mks.map((k, i) => {
+    const m = mon[k];
+    const pv = mks[i + 1] ? mon[mks[i + 1]].min : null;
+    const diff = pv != null ? m.min - pv : null;
+    const arr = diff == null ? `<span class="flat">—</span>` : diff > 0 ? `<span class="up">▲ ${statFmtShort(diff)}</span>` : `<span class="down">▼ ${statFmtShort(-diff)}</span>`;
+    return `<div class="month-row">
+      <span class="mk ${k === today.slice(0, 7) ? "cur" : ""}">${k.slice(0, 4)}/${String(+k.slice(5)).padStart(2, "0")}</span>
+      <span class="mt"><i style="width:${Math.max(3, m.min / mmx * 100)}%"></i></span>
+      <span class="td"><b>${statFmtDur(m.min)}</b> · ${m.n} 次</span>
+      <span class="tr">${arr}</span></div>`;
+  }).join("") : "";
+
+  const logRows = recent.length ? recent.map(e => {
+    const s = String(e.start), t = String(e.end);
+    const same = s.slice(0, 10) === t.slice(0, 10);
+    const d = new Date(s.replace(" ", "T"));
+    const dow = isNaN(d) ? "" : DAY_NAMES[d.getDay()];
+    return `<div class="log-row"><span class="tm">${esc(s.slice(5))} → ${esc(same ? t.slice(11, 16) : t.slice(5, 16))}</span>
+      <span class="dow">${dow}</span><span class="du">${statFmtDur(e.min)}</span></div>`;
+  }).join("") : emptyRow;
+
+  return `<div class="cnv">${kpis}
+    <div class="cx"><div class="sh"><span class="st">最近 7 天</span></div>
+      <div class="tbl"><div class="row head"><span>日期</span><span>近 7 天趋势</span><span style="text-align:right">时长</span><span style="text-align:right">次数</span></div>${weekRows}</div></div>
+    <div class="cx"><div class="sh"><span class="st">按月明细 · 环比</span></div>
+      <div class="tbl"><div class="mrows">${monthRows || emptyRow}</div></div></div>
+    <div class="cx"><div class="sh"><span class="st">最近解除记录</span></div>
+      <div class="tbl"><div class="mrows"><div class="log-row head" style="font-size:10px;color:var(--muted);letter-spacing:.06em"><span>时间段</span><span style="text-align:right">星期</span><span style="text-align:right">持续</span></div>${logRows}</div></div></div>
+  </div>`;
+}
+
+/* ---------- 视图切换 ---------- */
+(function () {
+  const sw = document.getElementById("statsViewSwitch");
+  if (!sw) return;
+  sw.addEventListener("click", e => {
+    const b = e.target.closest ? e.target.closest(".btn") : null;
+    if (!b || !b.dataset || !b.dataset.view) return;
+    statsView = b.dataset.view;
+    try { localStorage.setItem("afsStatsView", statsView); } catch (err) {}
+    renderStatsNew();
+  });
+})();
+
 function renderList(sel, arr, kind) {
   const box = $(sel);
   box.innerHTML = arr.length ? arr.map(v =>
@@ -739,7 +1387,7 @@ document.querySelectorAll(".nav-item").forEach(el => {
     document.querySelectorAll(".panel").forEach(x => x.classList.remove("active"));
     el.classList.add("active");
     $("#panel-" + el.dataset.tab).classList.add("active");
-    const titles = { status:"状态", schedule:"屏蔽计划", sites:"网站屏蔽", processes:"进程屏蔽", whitelist:"白名单", sync:"账号 / 同步", about:"关于 / 卸载" };
+    const titles = { status:"状态", schedule:"屏蔽计划", sites:"网站屏蔽", processes:"进程屏蔽", whitelist:"白名单", stats:"统计", sync:"账号 / 同步", about:"关于 / 卸载" };
     $("#panelTitle").textContent = titles[el.dataset.tab];
   });
 });
@@ -965,6 +1613,25 @@ $("#syncLogoutBtn").addEventListener("click", async () => {
     renderSync();
     toast("已退出登录", "ok");
   } catch (e) { toast("退出失败: " + e.message, "err"); }
+});
+
+// 统计页
+async function refreshStats() {
+  try {
+    const r = await api("/api/stats");
+    stats = r.stats;
+    renderStatsNew();
+  } catch (e) { toast("刷新统计失败: " + e.message, "err"); }
+}
+$("#statsRefreshBtn").addEventListener("click", refreshStats);
+$("#statsClearBtn").addEventListener("click", async () => {
+  if (!confirm("确定清空全部解除统计?此操作不可恢复。")) return;
+  try {
+    const r = await api("/api/stats/clear", "POST", {});
+    stats = { open: null, events: [] };
+    renderStatsNew();
+    toast(r.note || "统计已清空", "ok");
+  } catch (e) { toast("清空失败: " + e.message, "err"); }
 });
 
 $("#syncAutoSwitch").addEventListener("change", async e => {

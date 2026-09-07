@@ -262,6 +262,19 @@ $handler = {
             }
             return
         }
+        if ($method -eq 'GET' -and $path -eq '/api/stats') {
+            Send-AfsJson -Stream $stream -Status 200 -Obj @{ ok = $true; stats = (Read-AfsStats) }
+            return
+        }
+        if ($method -eq 'POST' -and $path -eq '/api/stats/clear') {
+            try {
+                Clear-AfsStats
+                Send-AfsJson -Stream $stream -Status 200 -Obj @{ ok = $true; note = '统计已清空' }
+            } catch {
+                Send-AfsJson -Stream $stream -Status 500 -Obj @{ ok = $false; error = $_.Exception.Message }
+            }
+            return
+        }
         if ($method -eq 'POST' -and $path -eq '/api/uninstall') {
             try {
                 $uninstallPs1 = Join-Path $PSScriptRoot 'uninstall.ps1'

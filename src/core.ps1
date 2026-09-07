@@ -5,7 +5,7 @@
 # ============================================================
 
 $script:AFS_NAME        = 'AwayFromShorts'
-$script:AFS_VERSION     = '1.3.3'
+$script:AFS_VERSION     = '1.3.4'
 $script:AFS_MARK_START  = "# >>> $($script:AFS_NAME) >>> (managed by AwayFromShorts - do not edit)"
 $script:AFS_MARK_END    = "# <<< $($script:AFS_NAME) <<<"
 # 这些进程永远不杀,防止把系统/本工具自己弄死
@@ -431,6 +431,77 @@ function Set-AfsLog {
     Write-AfsJson -Path $Path -Object $Log
 }
 
+# ---------- 临时解除(破戒)统计 ----------
+# 统计"取消屏蔽/临时解除"的次数与时长: 每次用户点「临时解除」(override.mode=off)
+# 且当前确实处于解除状态(reason=override-off)时开始计时, 屏蔽恢复/被清除/被强制压过时结算。
+# 数据存独立 stats.json (不写入 config, 不参与云同步); 引擎每分钟运行自然驱动状态机。
+
+$script:AFS_STATS_FILE = 'stats.json'
+$script:AFS_STATS_MAX  = 1000   # 保留事件上限, 超出裁剪最旧
+
+function Get-AfsStatsPath { (Join-Path (Split-Path (Get-AfsConfigPath)) $script:AFS_STATS_FILE) }
+
+function Read-AfsStats {
+    $p = Get-AfsStatsPath
+    if (Test-Path $p) {
+        try { return ConvertTo-AfsHashtable (ConvertFrom-Json ([System.IO.File]::ReadAllText($p, [System.Text.Encoding]::UTF8))) } catch { }
+    }
+    @{ open = $null; events = @() }
+}
+
+function Save-AfsStats {
+    param($Stats)
+    $utf8 = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText((Get-AfsStatsPath), (ConvertTo-Json $Stats -Depth 6), $utf8)
+}
+
+function Format-AfsMinTime { param([datetime]$T) $T.ToString('yyyy-MM-dd HH:mm') }
+
+# 每次屏蔽引擎运行时调用(锁内, 非 Simulate):
+#   进入 override-off -> 开启/延长当前解除会话;
+#   退出 override-off(恢复屏蔽/强制压过/手动清除/总开关关闭) -> 结算一次事件
+function Update-AfsUnlockStats {
+    param($Config, [string]$Reason, [datetime]$Now = (Get-Date))
+    $stats = Read-AfsStats
+    $changed = $false
+    if ($Reason -eq 'override-off') {
+        $untilStr = $null
+        if ($Config.override -and $Config.override.until) {
+            $u = [datetime]::MinValue
+            if ([datetime]::TryParse([string]$Config.override.until, [ref]$u)) { $untilStr = $u.ToString('o') }
+        }
+        if ($null -eq $stats.open) {
+            $stats.open = @{ start = Format-AfsMinTime $Now; until = $untilStr }
+            $changed = $true
+        } elseif ($untilStr -and $stats.open.until -ne $untilStr) {
+            $stats.open.until = $untilStr   # 再次点解除 = 延长本次, 不重复计次
+            $changed = $true
+        }
+    } elseif ($null -ne $stats.open) {
+        $start = [datetime]::MinValue
+        [void][datetime]::TryParse([string]$stats.open.start, [ref]$start)
+        $mins = [Math]::Max(1, [int][Math]::Round(($Now - $start).TotalMinutes))
+        $stats.events = @($stats.events + @{
+            start = $stats.open.start
+            end   = Format-AfsMinTime $Now
+            min   = $mins
+        })
+        $stats.open = $null
+        $changed = $true
+    }
+    if ($changed) {
+        if (@($stats.events).Count -gt $script:AFS_STATS_MAX) {
+            $stats.events = @($stats.events | Select-Object -Last $script:AFS_STATS_MAX)
+        }
+        Save-AfsStats $stats
+    }
+}
+
+function Clear-AfsStats {
+    $p = Get-AfsStatsPath
+    if (Test-Path $p) { Remove-Item $p -Force -ErrorAction SilentlyContinue }
+}
+
 # ---------- 浏览器窗口(工作区)屏蔽 ----------
 # 屏蔽时优雅关闭标题匹配的浏览器窗口(例如 Edge 的"娱乐"工作区), 其他窗口/工作区不受影响。
 # 关闭动作必须跑在用户交互会话里(S4U 计划任务无法操作桌面窗口),
@@ -520,20 +591,12 @@ function Remove-AfsBrowserPolicy {
 # RestartAll: 关闭所有浏览器窗口后重新打开 (URLBlocklist 变更后重启使策略生效)
 function Invoke-AfsBrowserWindowClose {
     param($Config, [switch]$RestartAll)
-    # 站点关键词: 从 blockedSites 提取主域 (bilibili.com -> bilibili), 用于按"窗口标题含娱乐站点名"兜底匹配
-    # (Edge 工作区窗口标题会随活动标签页变化, 只匹配工作区名不可靠)
-    $kws = @()
-    foreach ($s in @($Config.blockedSites)) {
-        $d = ($s -replace '^\*\.', '' -replace '^(www|m|live|mobile|amp)\.', '').ToLower()
-        $k = ($d -split '\.')[0]
-        # 只保留足够长的关键词(>=4 字符), 避免 t/v/old/b23 这类短词误伤普通窗口标题
-        if ($k -and $k.Length -ge 4) { $kws += $k }
-    }
+    # 只按用户配置的窗口标题(工作区名, 如"娱乐")关闭窗口 —— 刻意不做"标题含屏蔽站点名"兜底:
+    # 那会把普通工作窗口(如在工作区看 B 站教程/知乎)一并误关; 导航层拦截由 urlBlock 负责。
     $payload = @{
-        patterns     = @($Config.browser.windows | Where-Object { $_ })
-        siteKeywords = @($kws | Select-Object -Unique)
-        targets      = @($Config.browser.targets)
-        restartAll   = [bool]$RestartAll
+        patterns   = @($Config.browser.windows | Where-Object { $_ })
+        targets    = @($Config.browser.targets)
+        restartAll = [bool]$RestartAll
     }
     Write-AfsJson -Path (Get-AfsBrowserClosePath) -Object $payload
     # 用 wscript.exe + VBS 隐藏启动 (GUI 子系统, 无控制台窗口) —— 直接跑 powershell 即使 -WindowStyle Hidden
@@ -724,6 +787,8 @@ function Invoke-AfsEnforce {
     } catch {
         $log.error = $_.Exception.Message
     }
+    # 解除统计状态机 (非干跑): 观察 override-off 进入/退出
+    if (-not $Simulate) { Update-AfsUnlockStats -Config $Config -Reason $state.reason }
     if ($LogPath) { Set-AfsLog -Path $LogPath -Log $log }
     $log
 }
