@@ -50,26 +50,14 @@ try {
             }
             if ($match) {
                 $log.matched += "$n($($pr.Id)) [$title]"
+                # 直接强制结束匹配窗口的进程(无需确认): 页面 onbeforeunload 弹"确认离开?"
+                # 会卡住优雅关闭; 浏览器每个窗口是独立 browser 进程, 杀它只关该窗口及其标签,
+                # 其他窗口(学习/工作)不受影响。
                 try {
-                    $closeOk = $false
-                    if ($pr.CloseMainWindow()) {
-                        if ($pr.WaitForExit(3000)) { $closeOk = $true }
-                    }
-                    if (-not $closeOk) {
-                        # 优雅关闭失败(页面 onbeforeunload 弹"确认离开?"框, 或窗口拒绝关闭) ->
-                        # 若该浏览器没有其他窗口, 则强制结束 (避免一直要用户点确认)
-                        $other = @(Get-Process -Name $n -ErrorAction SilentlyContinue |
-                            Where-Object { $_.MainWindowTitle -and $_.Id -ne $pr.Id })
-                        if ($other.Count -eq 0) {
-                            Stop-Process -Id $pr.Id -Force -ErrorAction SilentlyContinue
-                            Start-Sleep -Milliseconds 500
-                            if (-not (Get-Process -Id $pr.Id -ErrorAction SilentlyContinue)) {
-                                $log.closed += "$n($($pr.Id)) [$title] (强制)"
-                            }
-                        }
-                        # 有其他窗口(学习窗口) -> 不强制, 保护用户其他工作
-                    } else {
-                        $log.closed += "$n($($pr.Id)) [$title]"
+                    Stop-Process -Id $pr.Id -Force -ErrorAction SilentlyContinue
+                    Start-Sleep -Milliseconds 400
+                    if (-not (Get-Process -Id $pr.Id -ErrorAction SilentlyContinue)) {
+                        $log.closed += "$n($($pr.Id)) [$title] (强制)"
                     }
                 } catch { }
             }
