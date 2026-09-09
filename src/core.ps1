@@ -216,6 +216,13 @@ function Remove-AfsForceState {
 function Test-AfsForceActive {
     param($Config, [datetime]$Now = (Get-Date))
     if (-not $Config.force.enabled) { return @{ active = $false; until = $null } }
+    # 可选"强制星期"过滤: force.weekdays 非空时仅所选星期强制 (星期语义 1=周一..7=周日, 与屏蔽计划一致)
+    $fWds = @($Config.force.weekdays | Where-Object { $null -ne $_ })
+    if ($fWds.Count -gt 0) {
+        $dayNum = [int]$Now.DayOfWeek
+        if ($dayNum -eq 0) { $dayNum = 7 }
+        if ($fWds -notcontains $dayNum) { return @{ active = $false; until = $null } }
+    }
     # 强制模式只在用户设置的屏蔽时段内生效: 时段外不强制, 可正常关闭/解除
     if (-not (Test-AfsInScheduleWindow -Config $Config -Now $Now)) {
         return @{ active = $false; until = $null }

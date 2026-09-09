@@ -192,6 +192,12 @@ $handler = {
                     if ($days -lt 1 -or $days -gt 30) { throw '强制持续天数需在 1~30 之间' }
                 }
                 $c = Get-AfsConfig
+                # 可选"强制星期" (1=周一..7=周日, 空=跟随屏蔽计划星期)
+                $c.force.weekdays = $null
+                if ($o.PSObject.Properties.Name -contains 'weekdays' -and $o.weekdays) {
+                    $wd = @($o.weekdays | ForEach-Object { [int]$_ } | Where-Object { $_ -ge 1 -and $_ -le 7 } | Select-Object -Unique)
+                    if ($wd.Count -gt 0) { $c.force.weekdays = $wd }
+                }
                 if ($enable) {
                     $until = (Get-Date).Date.AddDays($days).AddSeconds(-1)
                     Save-AfsForceState -Until $until.ToString('o')
@@ -214,6 +220,7 @@ $handler = {
                     # 未生效(已到期 / 窗口外残留): 允许清理
                     $c.force.enabled = $false
                     $c.force.until  = $null
+                    $c.force.weekdays = $null
                     Set-AfsConfigSafe -InputConfig $c | Out-Null
                     Remove-AfsForceState
                     Send-AfsJson -Stream $stream -Status 200 -Obj @{ ok = $true; note = '强制模式已关闭(未生效状态已清理)' }

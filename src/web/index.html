@@ -914,23 +914,39 @@ function renderForce() {
   let forceDaysSel = 1;
   const dOpts = [1, 2, 3, 7, 14];
   const dEnd = d => { const e = new Date(); e.setDate(e.getDate() + d - 1); return (e.getMonth() + 1) + ' 月 ' + e.getDate() + ' 日 24:00'; };
-  const chips = dOpts.map(d => `<button class="chip${d === forceDaysSel ? ' on' : ''}" data-fd="${d}">${d} 天</button>`).join('');
+  const dChips = dOpts.map(d => `<button class="chip${d === forceDaysSel ? ' on' : ''}" data-fd="${d}">${d} 天</button>`).join('');
+  const WD = ['', '周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+  let wdSel = (cfg.schedule && cfg.schedule.days && cfg.schedule.days.length) ? cfg.schedule.days.slice() : [1, 2, 3, 4, 5, 6, 7];
+  const wdTxt = s => s.length >= 7 ? '每天' : s.map(d => WD[d]).join('、');
+  const wdChips = WD.slice(1).map((n, i) => `<button class="chip${wdSel.indexOf(i + 1) >= 0 ? ' on' : ''}" data-wd="${i + 1}">${n}</button>`).join('');
+  const prevHtml = () => `🔒 开启后: <b>${wdTxt(wdSel)}</b> 的屏蔽时段内强制, 持续至 <b>${dEnd(forceDaysSel)}</b> 自动解除; 期间无法关闭 / 解除 / 改计划`;
   fa.innerHTML =
-    `<div class="hint">开启后<b>仅在你的屏蔽计划时段内强制</b>: 时段内无法关闭屏蔽 / 临时解除, 且到期前<b>无法提前关闭</b>(防破戒)——到期自动解除, 不自动续期。先选要强制几天, 再开启。</div>` +
-    `<div class="fd-row"><span class="hint" style="margin:0">⏳ 强制持续到:</span><div class="chips" id="forceDaysChips" style="margin-top:2px">${chips}</div></div>` +
-    `<div class="note" id="forceDaysPrev">🔒 开启后将强制至 <b>${dEnd(1)}</b> 自动解除, 期间无法关闭 / 解除 / 改计划</div>` +
+    `<div class="hint">开启后<b>仅在所选星期的屏蔽时段内强制</b>: 到期前<b>无法提前关闭</b>(防破戒)——到期自动解除, 不自动续期。先选强制星期与持续天数, 再开启。</div>` +
+    `<div class="fd-row"><span class="hint" style="margin:0">📅 强制星期:</span><div class="chips" id="forceWdChips" style="margin-top:2px">${wdChips}</div></div>` +
+    `<div class="fd-row"><span class="hint" style="margin:0">⏳ 持续:</span><div class="chips" id="forceDaysChips" style="margin-top:2px">${dChips}</div></div>` +
+    `<div class="note" id="forceDaysPrev">${prevHtml()}</div>` +
     `<button class="btn danger" id="forceOnBtn">🔒 开启强制模式(所选期间内不可关闭)</button>`;
+  const wdEls = document.querySelectorAll("#forceWdChips .chip");
+  wdEls.forEach(c => c.addEventListener("click", () => {
+    const d = parseInt(c.dataset.wd, 10);
+    const ix = wdSel.indexOf(d);
+    if (ix >= 0) wdSel.splice(ix, 1); else wdSel.push(d);
+    wdSel.sort((a, b) => a - b);
+    c.classList.toggle("on", ix < 0);
+    const pv = $("#forceDaysPrev"); if (pv) pv.innerHTML = prevHtml();
+  }));
   const chipEls = document.querySelectorAll("#forceDaysChips .chip");
   chipEls.forEach(c => c.addEventListener("click", () => {
     forceDaysSel = parseInt(c.dataset.fd, 10);
     chipEls.forEach(x => x.classList.toggle("on", x === c));
-    const pv = $("#forceDaysPrev"); if (pv) pv.innerHTML = `🔒 开启后将强制至 <b>${dEnd(forceDaysSel)}</b> 自动解除, 期间无法关闭 / 解除 / 改计划`;
+    const pv = $("#forceDaysPrev"); if (pv) pv.innerHTML = prevHtml();
   }));
   const on = $("#forceOnBtn");
   if (on) on.addEventListener("click", async () => {
-    if (!confirm("确定开启强制模式?\n\n开启后只在你的屏蔽计划时段内生效:\n• 屏蔽时段内无法关闭屏蔽(总开关)\n• 屏蔽时段内无法临时解除 / 清除临时设置\n• 屏蔽时段外不影响正常使用\n• 到期前(至 " + dEnd(forceDaysSel) + ")无法提前关闭(防破戒), 到期自动解除不续期\n\n⚠️ 想清楚再开——选定的 " + forceDaysSel + " 天内反悔也没用。")) return;
+    const wdShow = wdSel.length >= 7 ? '每天' : wdSel.map(d => WD[d]).join('、');
+    if (!confirm("确定开启强制模式?\n\n开启后只在所选星期的屏蔽计划时段内生效:\n• 强制星期: " + wdShow + "\n• 持续至 " + dEnd(forceDaysSel) + " 自动解除\n• 期间无法关闭屏蔽 / 临时解除 / 清除临时设置 / 修改计划\n• 到期前无法提前关闭(防破戒)\n\n⚠️ 想清楚再开——选定的" + forceDaysSel + "天内反悔也没用。")) return;
     try {
-      const r = await api("/api/force", "POST", { enabled: true, days: forceDaysSel });
+      const r = await api("/api/force", "POST", { enabled: true, days: forceDaysSel, weekdays: wdSel });
       toast(r.note || "强制模式已开启", "ok");
       await load();
     } catch (e) { toast(e.message, "err"); }
