@@ -907,18 +907,30 @@ function renderForce() {
     if (ms > 0) {
       const h = Math.floor(ms / 3600000), m = Math.floor(ms % 3600000 / 60000);
       fa.innerHTML =
-        `<div class="note red-note">🔒 <b>强制模式生效中</b> — 今天内<b>无法提前关闭</b>(防破戒设计), 也无法关闭屏蔽 / 临时解除。<br>约 ${h} 小时 ${m} 分钟后 (${until.toLocaleString()}) 自动解除, 到期<b>不会</b>自动续到下一天。</div>`;
+        `<div class="note red-note">🔒 <b>强制模式生效中</b> — 到期前<b>无法提前关闭</b>(防破戒设计), 也无法关闭屏蔽 / 临时解除。<br>约 ${h} 小时 ${m} 分钟后 (${until.toLocaleString()}) 自动解除, 到期<b>不会</b>自动续期。</div>`;
       return;
     }
   }
+  let forceDaysSel = 1;
+  const dOpts = [1, 2, 3, 7, 14];
+  const dEnd = d => { const e = new Date(); e.setDate(e.getDate() + d - 1); return (e.getMonth() + 1) + ' 月 ' + e.getDate() + ' 日 24:00'; };
+  const chips = dOpts.map(d => `<button class="chip${d === forceDaysSel ? ' on' : ''}" data-fd="${d}">${d} 天</button>`).join('');
   fa.innerHTML =
-    `<div class="hint">开启后<b>仅在你的屏蔽计划时段内强制</b>: 时段内无法关闭屏蔽或临时解除, 且<b>当天(至 24:00)无法提前关闭</b>(防破戒)——到期自动解除, 不自动续期。时段外不影响使用。想好了再开, 开了今天反悔也没用 😈</div>` +
-    `<button class="btn danger" id="forceOnBtn">🔒 开启强制模式(开启后今天内不可关闭)</button>`;
+    `<div class="hint">开启后<b>仅在你的屏蔽计划时段内强制</b>: 时段内无法关闭屏蔽 / 临时解除, 且到期前<b>无法提前关闭</b>(防破戒)——到期自动解除, 不自动续期。先选要强制几天, 再开启。</div>` +
+    `<div class="fd-row"><span class="hint" style="margin:0">⏳ 强制持续到:</span><div class="chips" id="forceDaysChips" style="margin-top:2px">${chips}</div></div>` +
+    `<div class="note" id="forceDaysPrev">🔒 开启后将强制至 <b>${dEnd(1)}</b> 自动解除, 期间无法关闭 / 解除 / 改计划</div>` +
+    `<button class="btn danger" id="forceOnBtn">🔒 开启强制模式(所选期间内不可关闭)</button>`;
+  const chipEls = document.querySelectorAll("#forceDaysChips .chip");
+  chipEls.forEach(c => c.addEventListener("click", () => {
+    forceDaysSel = parseInt(c.dataset.fd, 10);
+    chipEls.forEach(x => x.classList.toggle("on", x === c));
+    const pv = $("#forceDaysPrev"); if (pv) pv.innerHTML = `🔒 开启后将强制至 <b>${dEnd(forceDaysSel)}</b> 自动解除, 期间无法关闭 / 解除 / 改计划`;
+  }));
   const on = $("#forceOnBtn");
   if (on) on.addEventListener("click", async () => {
-    if (!confirm("确定开启强制模式?\n\n开启后只在你的屏蔽计划时段内生效:\n• 屏蔽时段内无法关闭屏蔽(总开关)\n• 屏蔽时段内无法临时解除 / 清除临时设置\n• 屏蔽时段外不影响正常使用\n• 开启后至今天 24:00 无法提前关闭(防破戒), 到期自动解除\n\n⚠️ 确认今天不想玩/不想刷了再开——开了今天就别想反悔。")) return;
+    if (!confirm("确定开启强制模式?\n\n开启后只在你的屏蔽计划时段内生效:\n• 屏蔽时段内无法关闭屏蔽(总开关)\n• 屏蔽时段内无法临时解除 / 清除临时设置\n• 屏蔽时段外不影响正常使用\n• 到期前(至 " + dEnd(forceDaysSel) + ")无法提前关闭(防破戒), 到期自动解除不续期\n\n⚠️ 想清楚再开——选定的 " + forceDaysSel + " 天内反悔也没用。")) return;
     try {
-      const r = await api("/api/force", "POST", { enabled: true });
+      const r = await api("/api/force", "POST", { enabled: true, days: forceDaysSel });
       toast(r.note || "强制模式已开启", "ok");
       await load();
     } catch (e) { toast(e.message, "err"); }

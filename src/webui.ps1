@@ -185,10 +185,15 @@ $handler = {
             try {
                 $o = $body | ConvertFrom-Json -ErrorAction Stop
                 $enable = [bool]$o.enabled
+                # 可选持续天数: days=1 今天 24:00 到期, days=2 到明天 24:00 ... (默认 1, 上限 30)
+                $days = 1
+                if ($o.PSObject.Properties.Name -contains 'days') {
+                    $days = [int]$o.days
+                    if ($days -lt 1 -or $days -gt 30) { throw '强制持续天数需在 1~30 之间' }
+                }
                 $c = Get-AfsConfig
                 if ($enable) {
-                    # 生效到当天 24:00 (23:59:59)
-                    $until = (Get-Date).Date.AddDays(1).AddSeconds(-1)
+                    $until = (Get-Date).Date.AddDays($days).AddSeconds(-1)
                     Save-AfsForceState -Until $until.ToString('o')
                     $c.force.enabled = $true
                     $c.force.until  = $until.ToString('o')
@@ -196,7 +201,7 @@ $handler = {
                     Send-AfsJson -Stream $stream -Status 200 -Obj @{
                         ok = $true
                         until = $until.ToString('o')
-                        note = "强制模式已开启: 屏蔽时段内 ($($until.ToString('yyyy-MM-dd HH:mm')) 前) 无法关闭/解除屏蔽, 时段外不强制"
+                        note = "强制模式已开启: 至 $($until.ToString('yyyy-MM-dd HH:mm')) 前无法关闭/解除屏蔽(防破戒), 到期自动解除, 不自动续期"
                     }
                 } else {
                     # 开启后当天内不可关闭(防破戒): 生效中(屏蔽窗口内且未到期)一律拒绝
