@@ -911,26 +911,16 @@ function renderForce() {
     if (ms > 0) {
       const h = Math.floor(ms / 3600000), m = Math.floor(ms % 3600000 / 60000);
       fa.innerHTML =
-        `<div class="note red-note">🔒 <b>强制模式生效中(屏蔽时段内)</b> — 生效期间<b>无法关闭屏蔽、无法临时解除</b>。<br>${h} 小时 ${m} 分钟后(约 ${until.toLocaleString()})本日强制解除, 时段外不强制。<br>如确需提前结束强制, 可点下方按钮关闭强制模式。</div>` +
-        `<button class="btn danger" id="forceOffBtn">🔓 关闭强制模式</button>`;
-      const off = $("#forceOffBtn");
-      if (off) off.addEventListener("click", async () => {
-        if (!confirm("确定关闭强制模式?\n\n关闭后立即恢复为普通屏蔽(可随时关闭屏蔽 / 临时解除), 强制状态文件也会被清除。")) return;
-        try {
-          const r = await api("/api/force", "POST", { enabled: false });
-          toast(r.note || "强制模式已关闭", "ok");
-          await load();
-        } catch (e) { toast(e.message, "err"); }
-      });
+        `<div class="note red-note">🔒 <b>强制模式生效中</b> — 今天内<b>无法提前关闭</b>(防破戒设计), 也无法关闭屏蔽 / 临时解除。<br>约 ${h} 小时 ${m} 分钟后 (${until.toLocaleString()}) 自动解除, 到期<b>不会</b>自动续到下一天。</div>`;
       return;
     }
   }
   fa.innerHTML =
-    `<div class="hint">开启后<b>仅在你的屏蔽计划时段内强制</b>: 时段内无法关闭屏蔽或临时解除, 时段外完全不影响使用。强制模式<b>随时可以手动关闭</b>(生效中也一样)。</div>` +
-    `<button class="btn danger" id="forceOnBtn">🔒 开启强制模式(仅在屏蔽时段内)</button>`;
+    `<div class="hint">开启后<b>仅在你的屏蔽计划时段内强制</b>: 时段内无法关闭屏蔽或临时解除, 且<b>当天(至 24:00)无法提前关闭</b>(防破戒)——到期自动解除, 不自动续期。时段外不影响使用。想好了再开, 开了今天反悔也没用 😈</div>` +
+    `<button class="btn danger" id="forceOnBtn">🔒 开启强制模式(开启后今天内不可关闭)</button>`;
   const on = $("#forceOnBtn");
   if (on) on.addEventListener("click", async () => {
-    if (!confirm("确定开启强制模式?\n\n开启后只在你的屏蔽计划时段内生效:\n• 屏蔽时段内无法关闭屏蔽(总开关)\n• 屏蔽时段内无法临时解除 / 清除临时设置\n• 屏蔽时段外不影响正常使用\n• 随时可以手动关闭强制模式\n\n建议先把屏蔽计划、网站、进程配置好再开启。")) return;
+    if (!confirm("确定开启强制模式?\n\n开启后只在你的屏蔽计划时段内生效:\n• 屏蔽时段内无法关闭屏蔽(总开关)\n• 屏蔽时段内无法临时解除 / 清除临时设置\n• 屏蔽时段外不影响正常使用\n• 开启后至今天 24:00 无法提前关闭(防破戒), 到期自动解除\n\n⚠️ 确认今天不想玩/不想刷了再开——开了今天就别想反悔。")) return;
     try {
       const r = await api("/api/force", "POST", { enabled: true });
       toast(r.note || "强制模式已开启", "ok");

@@ -199,12 +199,19 @@ $handler = {
                         note = "强制模式已开启: 屏蔽时段内 ($($until.ToString('yyyy-MM-dd HH:mm')) 前) 无法关闭/解除屏蔽, 时段外不强制"
                     }
                 } else {
-                    # 允许随时关闭 (即使生效中): 清 config + 独立状态文件, 计划任务不再兜底补开
+                    # 开启后当天内不可关闭(防破戒): 生效中(屏蔽窗口内且未到期)一律拒绝
+                    $ft = Test-AfsForceActive -Config $c
+                    if ($ft.active) {
+                        $errUntil = if ($ft.until) { $ft.until.ToString('yyyy-MM-dd HH:mm') } else { '今天 24:00' }
+                        Send-AfsJson -Stream $stream -Status 403 -Obj @{ ok = $false; error = "强制模式生效中无法关闭: 将于 $errUntil 自动解除(防破戒设计, 不自动续期)。到期前如需操作请等待自动解除。" }
+                        return
+                    }
+                    # 未生效(已到期 / 窗口外残留): 允许清理
                     $c.force.enabled = $false
                     $c.force.until  = $null
                     Set-AfsConfigSafe -InputConfig $c | Out-Null
                     Remove-AfsForceState
-                    Send-AfsJson -Stream $stream -Status 200 -Obj @{ ok = $true; note = '强制模式已关闭' }
+                    Send-AfsJson -Stream $stream -Status 200 -Obj @{ ok = $true; note = '强制模式已关闭(未生效状态已清理)' }
                 }
             } catch {
                 Send-AfsJson -Stream $stream -Status 400 -Obj @{ ok = $false; error = $_.Exception.Message }
