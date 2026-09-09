@@ -26,7 +26,7 @@ $runtimeFiles = @(
     'config.json', 'last-run.json', 'github-token.enc',
     'sync-state.json', 'force-state.json', 'clash-state.json',
     'browser-state.json', 'browser-close.json', 'browser-close.log',
-    'stats.json'
+    'stats.json', 'activity.json'
 )
 Get-ChildItem (Join-Path $stage 'src') -File |
     Where-Object { $runtimeFiles -contains $_.Name } |
