@@ -78,13 +78,19 @@ function Invoke-AfsCloseRound {
     try {
         [System.IO.File]::WriteAllText($logPath, (ConvertTo-Json $log), (New-Object System.Text.UTF8Encoding($false)))
     } catch { }
+    # 返回本轮实际关闭的窗口数(供调用方自适应轮询间隔)
+    return @($log.closed).Count
 }
 
-# 屏蔽期间常驻监测 (每 5 秒一轮): 窗口被关后 10 秒内重开也会在下一轮再次被关。
+# 屏蔽期间常驻监测, 自适应轮询:
+#   - 关闭过匹配窗口(用户正在反复开) -> 5 秒紧盯, 重开 <=5s 被再次强杀
+#   - 连续 4 轮(约 20s+)无动静        -> 降到 8 秒低频 (仍保证 10 秒内响应, 唤醒次数约 -37%, 省电)
 # 任务 MultipleInstancesPolicy=IgnoreNew: 引擎每分钟触发, 常驻实例不被重复拉起。
-# 引擎解除屏蔽时 payload.patterns 变空 -> 本轮无匹配后自动退出, 不空转。
+# 引擎解除屏蔽时 payload.patterns 变空 -> 本轮后自动退出, 不空转。
+$quietRounds = 0
 while ($true) {
-    Invoke-AfsCloseRound
+    $closedN = Invoke-AfsCloseRound
+    if ($closedN -gt 0) { $quietRounds = 0 } else { $quietRounds++ }
     $stillActive = $false
     if (Test-Path $payloadPath) {
         try {
@@ -93,5 +99,5 @@ while ($true) {
         } catch { }
     }
     if (-not $stillActive) { break }
-    Start-Sleep -Seconds 5
+    Start-Sleep -Seconds $(if ($quietRounds -ge 4) { 8 } else { 5 })
 }
