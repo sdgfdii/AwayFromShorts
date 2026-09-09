@@ -29,3 +29,28 @@ try {
     Write-Output ("AFS FATAL: {0}" -f $_.Exception.Message)
     exit 1
 }
+# ---- 看门狗: 探测面板健康(防单线程僵死导致"保存失败"), 无响应则自动重启 (90s 冷却防抖动) ----
+if (-not $Simulate) {
+    try {
+        $probeOk = $false
+        try {
+            $probe = Invoke-WebRequest 'http://127.0.0.1:8737/api/status' -TimeoutSec 6 -UseBasicParsing -ErrorAction Stop
+            $probeOk = ($probe.StatusCode -eq 200)
+        } catch { $probeOk = $false }
+        if (-not $probeOk) {
+            $cool = Join-Path $appDir '.webui-restart.timestamp'
+            $nowEpoch = [int][DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+            $allow = $true
+            if (Test-Path $cool) {
+                $last = 0
+                [void][int]::TryParse(([System.IO.File]::ReadAllText($cool).Trim()), [ref]$last)
+                if (($nowEpoch - $last) -lt 90) { $allow = $false }
+            }
+            if ($allow) {
+                [System.IO.File]::WriteAllText($cool, $nowEpoch.ToString(), (New-Object System.Text.UTF8Encoding($false)))
+                schtasks /Run /TN AwayFromShorts-WebUI 2>&1 | Out-Null
+                Write-Output 'AFS-WATCHDOG: webui unresponsive -> restarted AwayFromShorts-WebUI'
+            }
+        }
+    } catch { }
+}
