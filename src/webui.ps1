@@ -185,36 +185,29 @@ $handler = {
             try {
                 $o = $body | ConvertFrom-Json -ErrorAction Stop
                 $enable = [bool]$o.enabled
-                # 可选持续天数: days=1 今天 24:00 到期, days=2 到明天 24:00 ... (默认 1, 上限 30)
-                $days = 1
-                if ($o.PSObject.Properties.Name -contains 'days') {
-                    $days = [int]$o.days
-                    if ($days -lt 1 -or $days -gt 30) { throw '强制持续天数需在 1~30 之间' }
-                }
                 $c = Get-AfsConfig
-                # 可选"强制星期" (1=周一..7=周日, 空=跟随屏蔽计划星期)
-                $c.force.weekdays = $null
-                if ($o.PSObject.Properties.Name -contains 'weekdays' -and $o.weekdays) {
-                    $wd = @($o.weekdays | ForEach-Object { [int]$_ } | Where-Object { $_ -ge 1 -and $_ -le 7 } | Select-Object -Unique)
-                    if ($wd.Count -gt 0) { $c.force.weekdays = $wd }
-                }
                 if ($enable) {
-                    $until = (Get-Date).Date.AddDays($days).AddSeconds(-1)
-                    Save-AfsForceState -Until $until.ToString('o')
+                    # 可选"强制星期" (1=周一..7=周日, 空=跟随屏蔽计划星期)
+                    $c.force.weekdays = $null
+                    if ($o.PSObject.Properties.Name -contains 'weekdays' -and $o.weekdays) {
+                        $wd = @($o.weekdays | ForEach-Object { [int]$_ } | Where-Object { $_ -ge 1 -and $_ -le 7 } | Select-Object -Unique)
+                        if ($wd.Count -gt 0) { $c.force.weekdays = $wd }
+                    }
+                    # 长期模式(星期循环, 无到期日): 所选星期的屏蔽窗口内持续强制, 直到手动关闭
                     $c.force.enabled = $true
-                    $c.force.until  = $until.ToString('o')
+                    $c.force.until  = $null
                     Set-AfsConfigSafe -InputConfig $c | Out-Null
+                    Save-AfsForceState -Until $null
                     Send-AfsJson -Stream $stream -Status 200 -Obj @{
                         ok = $true
-                        until = $until.ToString('o')
-                        note = "强制模式已开启: 至 $($until.ToString('yyyy-MM-dd HH:mm')) 前无法关闭/解除屏蔽(防破戒), 到期自动解除, 不自动续期"
+                        until = $null
+                        note = '强制模式已开启: 所选星期的屏蔽时段内长期强制(无到期日); 强制中无法关闭, 窗口外 / 非所选星期可手动关闭'
                     }
                 } else {
                     # 开启后当天内不可关闭(防破戒): 生效中(屏蔽窗口内且未到期)一律拒绝
                     $ft = Test-AfsForceActive -Config $c
                     if ($ft.active) {
-                        $errUntil = if ($ft.until) { $ft.until.ToString('yyyy-MM-dd HH:mm') } else { '今天 24:00' }
-                        Send-AfsJson -Stream $stream -Status 403 -Obj @{ ok = $false; error = "强制模式生效中无法关闭: 将于 $errUntil 自动解除(防破戒设计, 不自动续期)。到期前如需操作请等待自动解除。" }
+                        Send-AfsJson -Stream $stream -Status 403 -Obj @{ ok = $false; error = '强制模式正在生效中, 无法关闭(防破戒): 等当前屏蔽时段结束, 或在非所选星期 / 屏蔽窗口外再关闭。' }
                         return
                     }
                     # 未生效(已到期 / 窗口外残留): 允许清理

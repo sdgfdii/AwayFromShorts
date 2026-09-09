@@ -48,7 +48,7 @@ function Get-AfsDefaultConfig {
         blockedProcesses = @('chrome','msedge')
         whitelist = @{ sites = @(); processes = @() }
         override = @{ mode = 'none'; until = $null }
-        force = @{ enabled = $false; until = $null }   # 强制模式: 一旦开启, 当天 24:00 前无法关闭/解除屏蔽
+        force = @{ enabled = $false; until = $null; weekdays = @() }   # 强制模式: 所选星期内强制, 强制中不可关闭(防破戒)
         web = @{ port = 8737 }
 
         browser = @{
@@ -164,7 +164,7 @@ $null = $cfg.Remove('clash')   # Clash 接管功能已移除 (v1.2.7): 清理旧
     $forceNow = Test-AfsForceActive -Config $cfg
     if ($forceNow.active) {
         $cfg.force.enabled = $true
-        $cfg.force.until  = $forceNow.until.ToString('o')
+        $cfg.force.until  = if ($forceNow.until) { $forceNow.until.ToString('o') } else { $null }   # 长期模式(星期循环) until 为空
     } else {
         $cfg.force.until = $null
     }
@@ -238,8 +238,11 @@ function Test-AfsForceActive {
         $t = [datetime]::MinValue
         if ([datetime]::TryParse([string]$st.until, [ref]$t)) { if ($null -eq $until -or $t -gt $until) { $until = $t } }
     }
-    if ($null -eq $until) { $until = $Now.Date.AddDays(1).AddSeconds(-1) }                       # 缺失(手改损坏)默认当天结束
-    elseif ($until -lt $Now) { return @{ active = $false; until = $null } }                         # 已到期(跨天): 本次强制结束, 由引擎自动关闭, 不自动续期
+    if ($null -eq $until) {
+        # 长期模式(星期循环, 无到期日): config 与状态文件都无 until 时按"持续生效"处理
+        return @{ active = $true; until = $null }
+    }
+    if ($until -lt $Now) { return @{ active = $false; until = $null } }                         # 仅兼容旧式单次强制(带 until)跨天过期: 由引擎自动清理
     @{ active = $true; until = $until }
 }
 
@@ -772,17 +775,20 @@ function Invoke-AfsEnforce {
             Save-AfsForceState -Until $forceActive.until.ToString('o')
         }
     } elseif ($Config.force.enabled) {
-        # 未生效: 已到期(跨天)或 until 缺失 -> 自动关闭本次强制 (即使当前在屏蔽窗口内)
-        $fU = [datetime]::MinValue
-        $expired = -not $Config.force.until
-        if (-not $expired) { $expired = -not [datetime]::TryParse([string]$Config.force.until, [ref]$fU) -or $fU -lt (Get-Date) }
+        # 未生效: 仅旧式单次强制(until 非空且已跨天过期)自动关闭;
+        # 长期模式(until 为空 = 星期循环)不自动解除, 保留到用户手动关闭(非强制时段可关)
+        $expired = $false
+        if ($Config.force.until) {
+            $fU = [datetime]::MinValue
+            $expired = -not [datetime]::TryParse([string]$Config.force.until, [ref]$fU) -or $fU -lt (Get-Date)
+        }
         if ($expired) {
             $Config.force.enabled = $false
             $Config.force.until  = $null
             if (-not $Simulate) { Set-AfsConfigSafe -InputConfig $Config | Out-Null }
             Remove-AfsForceState
         }
-        # until 未过期但窗口外: 保留配置, 进入下个屏蔽窗口时自动生效 (窗口内生效中不可关闭)
+        # 长期或窗口外未过期: 保留配置, 进入所选星期的屏蔽窗口时自动生效
     }
     $log = @{
         time   = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
