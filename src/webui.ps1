@@ -93,24 +93,23 @@ $handler = {
         $stream = $client.GetStream()
         $stream.ReadTimeout = 8000
         $buf  = [byte[]]::new(16384)
-        $sb   = [System.Text.StringBuilder]::new()
-        $all  = ''
+        $raw  = [System.Collections.Generic.List[byte]]::new()
         $head = $null
-        $body = ''
         $contentLength = 0
-        $offset = 0
+        $headBytesLen = 0
 
-        # 读请求头
+        # 读请求头 (字节累积, 之后按字节切 body —— 字符数 vs Content-Length 字节数混用会导致中文 body 误判未读完)
         while ($true) {
             $n = $stream.Read($buf, 0, $buf.Length)
             if ($n -le 0) { break }
-            [void]$sb.Append([System.Text.Encoding]::UTF8.GetString($buf, 0, $n))
-            $all = $sb.ToString()
+            for ($k = 0; $k -lt $n; $k++) { $raw.Add($buf[$k]) }
+            $all = [System.Text.Encoding]::UTF8.GetString($raw.ToArray())
             $idx = $all.IndexOf("`r`n`r`n")
             if ($idx -ge 0) {
-                $head = $all.Substring(0, $idx)
-                $offset = $idx + 4
-                foreach ($line in ($head -split "`r`n")) {
+                $headStr = $all.Substring(0, $idx)
+                $head = $headStr
+                $headBytesLen = [System.Text.Encoding]::UTF8.GetByteCount($headStr) + 4
+                foreach ($line in ($headStr -split "`r`n")) {
                     if ($line -match '^Content-Length:\s*(\d+)') { $contentLength = [int]$Matches[1] }
                 }
                 break
@@ -118,21 +117,16 @@ $handler = {
         }
         if ($null -eq $head) { throw 'bad request' }
 
-        # 读 body
-        $have = $all.Length - $offset
-        if ($have -lt $contentLength) {
-            $need = $contentLength - $have
-            $bodyBuf = [byte[]]::new($need)
-            $read = 0
-            while ($read -lt $need) {
-                $n = $stream.Read($bodyBuf, $read, $need - $read)
-                if ($n -le 0) { break }
-                $read += $n
-            }
-            $body = [System.Text.Encoding]::UTF8.GetString($bodyBuf, 0, $read)
-        } elseif ($have -gt 0 -and $contentLength -gt 0) {
-            $body = $all.Substring($offset, [Math]::Min($contentLength, $have))
+        # 读满 body (按字节补齐)
+        while ($raw.Count -lt ($headBytesLen + $contentLength)) {
+            $n = $stream.Read($buf, 0, $buf.Length)
+            if ($n -le 0) { break }
+            for ($k = 0; $k -lt $n; $k++) { $raw.Add($buf[$k]) }
         }
+        $bodyBytes = if ($contentLength -gt 0 -and $raw.Count -ge ($headBytesLen + $contentLength)) {
+            $raw.GetRange($headBytesLen, $contentLength).ToArray()
+        } else { $raw.ToArray() }
+        $body = [System.Text.Encoding]::UTF8.GetString($bodyBytes)
 
         $parts = $head -split '\s+'
         $method = if ($parts.Count -gt 0) { $parts[0].ToUpper() } else { '' }
@@ -147,6 +141,7 @@ $handler = {
             Send-AfsResponse -Stream $stream -Status 200 -Type 'text/html; charset=utf-8' -Body $indexBytes
             return
         }
+        if ($path -eq '/api/ping') { Send-AfsJson -Stream $stream -Status 200 -Obj @{ ok = $true; pong = $true }; return }
         if ($method -eq 'GET' -and $path -eq '/api/config') {
             Send-AfsJson -Stream $stream -Status 200 -Obj @{ ok = $true; config = (Get-AfsConfig) }
             return

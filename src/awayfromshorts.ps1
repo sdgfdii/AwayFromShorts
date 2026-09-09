@@ -34,7 +34,7 @@ if (-not $Simulate) {
     try {
         $probeOk = $false
         try {
-            $probe = Invoke-WebRequest 'http://127.0.0.1:8737/api/status' -TimeoutSec 6 -UseBasicParsing -ErrorAction Stop
+            $probe = Invoke-WebRequest 'http://127.0.0.1:8737/api/ping' -Method Post -ContentType 'application/json' -Body ([System.Text.Encoding]::UTF8.GetBytes('{}')) -TimeoutSec 6 -UseBasicParsing -ErrorAction Stop
             $probeOk = ($probe.StatusCode -eq 200)
         } catch { $probeOk = $false }
         if (-not $probeOk) {
