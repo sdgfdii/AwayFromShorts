@@ -457,8 +457,7 @@
         <div class="ver">v<span id="verTag">-</span></div>
       </div>
     </div>
-    <div class="nav-item active" data-tab="status"><span class="dot"></span>状态</div>
-    <div class="nav-item" data-tab="schedule"><span class="dot"></span>屏蔽计划</div>
+    <div class="nav-item active" data-tab="status"><span class="dot"></span>状态 / 屏蔽计划</div>
     <div class="nav-item" data-tab="sites"><span class="dot"></span>网站屏蔽</div>
     <div class="nav-item" data-tab="processes"><span class="dot"></span>进程屏蔽</div>
     <div class="nav-item" data-tab="whitelist"><span class="dot"></span>白名单</div>
@@ -522,10 +521,7 @@
         </div>
         <div class="note">保存或点击「立即应用」后,屏蔽引擎(计划任务)最长 1 分钟内生效。临时屏蔽/解除会覆盖计划,到期自动恢复。</div>
       </div>
-    </section>
-
-    <!-- ============ 计划 ============ -->
-    <section class="panel" id="panel-schedule">
+    <!-- ---- 屏蔽计划 (与状态同页) ---- -->
       <div class="card" id="forceCard">
         <h3>🔒 强制模式</h3>
         <div id="forceArea"></div>
@@ -1462,7 +1458,7 @@ document.querySelectorAll(".nav-item").forEach(el => {
     document.querySelectorAll(".panel").forEach(x => x.classList.remove("active"));
     el.classList.add("active");
     $("#panel-" + el.dataset.tab).classList.add("active");
-    const titles = { status:"状态", schedule:"屏蔽计划", sites:"网站屏蔽", processes:"进程屏蔽", whitelist:"白名单", stats:"统计", sync:"账号 / 同步", about:"关于 / 卸载" };
+    const titles = { status:"状态 / 屏蔽计划", sites:"网站屏蔽", processes:"进程屏蔽", whitelist:"白名单", stats:"统计", sync:"账号 / 同步", about:"关于 / 卸载" };
     $("#panelTitle").textContent = titles[el.dataset.tab];
     if (el.dataset.tab === "stats") refreshStats();   // 进入统计页时拉取最新数据
   });
