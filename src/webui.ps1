@@ -245,6 +245,8 @@ $handler = {
                     $c.override.until = (Get-Date).AddMinutes($minutes).ToString('o')
                 }
                 Set-AfsConfigSafe -InputConfig $c | Out-Null   # 返回值必须吞掉, 否则会泄漏到 stdout
+                # 立即记录统计状态(解除起点/结算), 不依赖下方 enforce 是否成功 —— 面板繁忙/僵死时起点也不会丢
+                try { Invoke-AfsLocked -Action { $c2 = Get-AfsConfig; $s2 = Get-AfsActiveState -Config $c2; Update-AfsUnlockStats -Config $c2 -Reason $s2.reason } } catch { }
                 # 立即生效: 管理员面板直接同步执行 enforcer, 不等计划任务 (任务可能失败/错过触发, 避免"点了没用")
                 $applied = $false
                 if (Get-AfsIsAdmin) {

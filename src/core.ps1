@@ -480,10 +480,17 @@ function Update-AfsUnlockStats {
     } elseif ($null -ne $stats.open) {
         $start = [datetime]::MinValue
         [void][datetime]::TryParse([string]$stats.open.start, [ref]$start)
-        $mins = [Math]::Max(1, [int][Math]::Round(($Now - $start).TotalMinutes))
+        # cap session end at override expiry (until): when the engine was down
+        # (shutdown/sleep) it must not count downtime as unblock time
+        $end = $Now
+        if ($stats.open.until) {
+            $u = [datetime]::MinValue
+            if ([datetime]::TryParse([string]$stats.open.until, [ref]$u) -and $u -lt $end -and $u -gt $start) { $end = $u }
+        }
+        $mins = [Math]::Max(1, [int][Math]::Round(($end - $start).TotalMinutes))
         $stats.events = @($stats.events + @{
             start = $stats.open.start
-            end   = Format-AfsMinTime $Now
+            end   = Format-AfsMinTime $end
             min   = $mins
         })
         $stats.open = $null
