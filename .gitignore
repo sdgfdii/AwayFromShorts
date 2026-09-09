@@ -13,3 +13,6 @@ hosts.backup
 Thumbs.db
 .vscode/
 .idea/
+
+# 项目内部数据(预览/记忆)
+.workbuddy/

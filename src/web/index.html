@@ -445,6 +445,179 @@
   .atv .wk .wb .wl { font-size:10px; color:var(--muted); white-space:nowrap; }
   .atv .wk .wb.today .wl { color:var(--text); font-weight:700; }
   .atv .stat-empty { color:var(--muted); text-align:center; padding:18px 0 6px; font-size:12px; }
+
+  /* ============ 首页 · 仪表盘 ============ */
+  .home-hero {
+    position: relative; overflow: hidden; border-radius: 18px; margin-bottom: 16px;
+    padding: 26px 28px; display: flex; align-items: center; justify-content: space-between;
+    gap: 22px; flex-wrap: wrap;
+    background: linear-gradient(135deg, rgba(79,140,255,.20), rgba(123,92,255,.10) 48%, rgba(79,140,255,.04));
+    border: 1px solid rgba(79,140,255,.38);
+    box-shadow: 0 10px 40px rgba(0,0,0,.25);
+  }
+  .home-hero.blocking {
+    background: linear-gradient(135deg, rgba(255,93,93,.22), rgba(255,171,61,.10) 48%, rgba(255,93,93,.05));
+    border-color: rgba(255,93,93,.5);
+  }
+  .home-hero.off {
+    background: linear-gradient(135deg, rgba(139,147,167,.16), rgba(139,147,167,.06) 48%, rgba(139,147,167,.03));
+    border-color: rgba(139,147,167,.4);
+  }
+  .home-hero::after {
+    content: ""; position: absolute; right: -60px; top: -90px; width: 280px; height: 280px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(79,140,255,.30), transparent 66%); pointer-events: none;
+  }
+  .home-hero.blocking::after { background: radial-gradient(circle, rgba(255,93,93,.32), transparent 66%); }
+  .home-hero .hl { position: relative; z-index: 1; flex: 1 1 340px; min-width: 0; }
+  .home-hero .hstat { display: flex; align-items: center; gap: 16px; }
+  .home-hero .hicon {
+    width: 64px; height: 64px; border-radius: 18px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; font-size: 32px;
+    background: rgba(52,199,123,.14); border: 1px solid rgba(52,199,123,.42);
+    box-shadow: 0 0 24px rgba(52,199,123,.18);
+  }
+  .home-hero.blocking .hicon { background: rgba(255,93,93,.15); border-color: rgba(255,93,93,.45); box-shadow: 0 0 24px rgba(255,93,93,.2); animation: heroPulse 1.8s ease-in-out infinite; }
+  .home-hero.off .hicon { background: rgba(139,147,167,.14); border-color: rgba(139,147,167,.4); box-shadow: none; }
+  @keyframes heroPulse {
+    0%,100% { box-shadow: 0 0 18px rgba(255,93,93,.18); }
+    50% { box-shadow: 0 0 30px rgba(255,93,93,.4); }
+  }
+  .home-hero .htitle { font-size: 25px; font-weight: 800; line-height: 1.2; color: var(--green); }
+  .home-hero.blocking .htitle { color: #ff9b9b; }
+  .home-hero.off .htitle { color: var(--muted); }
+  .home-hero .hsub { color: var(--muted); font-size: 13.5px; margin-top: 5px; }
+  .home-hero .hsub b { color: var(--text); }
+  .home-hero .hcount { margin-top: 16px; display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap; }
+  .home-hero .hcount .lbl { font-size: 12px; color: var(--muted); letter-spacing: .05em; }
+  .home-hero .hcount .num { font-size: 32px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--accent); line-height: 1; }
+  .home-hero.blocking .hcount .num { color: #ffb3b3; }
+  .home-hero .hcount .unit { font-size: 13px; color: var(--muted); }
+  .home-hero .hbtns { position: relative; z-index: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 9px; min-width: 252px; }
+  .home-hero .hbtns .btn { padding: 10px 14px; font-size: 13px; justify-content: center; }
+  .home-hero .hbtns .btn.full { grid-column: 1 / -1; }
+
+  .home-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .home-kpi {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 13px;
+    padding: 14px 16px; position: relative; overflow: hidden; transition: border-color .15s, transform .15s;
+  }
+  .home-kpi:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .home-kpi .ik { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  .home-kpi .ik .em { font-size: 14px; }
+  .home-kpi .iv { font-size: 24px; font-weight: 800; margin-top: 7px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .home-kpi .iv .u { font-size: 13px; color: var(--muted); font-weight: 600; margin-left: 3px; }
+  .home-kpi .iv.red { color: var(--red); } .home-kpi .iv.green { color: var(--green); } .home-kpi .iv.orange { color: var(--orange); } .home-kpi .iv.blue { color: var(--accent); }
+  .home-kpi .id { font-size: 11.5px; color: var(--muted); margin-top: 4px; }
+
+  /* ============ 全站升级 ============ */
+  /* 侧边栏 */
+  .sidebar { background: linear-gradient(180deg, var(--panel), #131722); }
+  .brand .logo { box-shadow: 0 4px 14px rgba(79,140,255,.4); }
+  .nav-item { border-radius: 10px; transition: all .18s; }
+  .nav-item .dot { box-shadow: 0 0 8px currentColor; }
+  .nav-item:hover { transform: translateX(2px); }
+  .nav-item.active { background: linear-gradient(90deg, rgba(79,140,255,.16), rgba(123,92,255,.10)); box-shadow: inset 0 0 0 1px rgba(79,140,255,.28); }
+
+  /* 顶栏 */
+  .main { background: radial-gradient(1200px 300px at 15% -10%, rgba(79,140,255,.06), transparent 60%); }
+  .topbar h1 { letter-spacing: .2px; }
+  .topbar .pill { transition: all .2s; }
+
+  /* 卡片统一质感 */
+  .card {
+    background: linear-gradient(180deg, rgba(30,34,48,.6), var(--panel));
+    box-shadow: 0 4px 20px rgba(0,0,0,.18);
+    transition: border-color .18s;
+  }
+  .card:hover { border-color: #36405a; }
+  .card h3 { letter-spacing: .3px; }
+  .card h3::before { content: ""; width: 3px; height: 14px; border-radius: 2px; background: linear-gradient(var(--accent), #7b5cff); flex-shrink: 0; }
+
+  /* 预设卡片 */
+  .preset { transition: all .18s; }
+  .preset:hover { transform: translateY(-2px); border-color: var(--accent); box-shadow: 0 6px 18px rgba(0,0,0,.22); }
+  .preset.checked { box-shadow: 0 0 0 1px rgba(79,140,255,.25), 0 6px 18px rgba(79,140,255,.10); }
+  .preset input { width: 16px; height: 16px; cursor: pointer; }
+
+  /* 列表项 */
+  .list-item { transition: border-color .15s, background .15s; }
+  .list-item:hover { border-color: #36405a; background: var(--panel); }
+
+  /* 状态格子 */
+  .status-cell { transition: border-color .15s; }
+  .status-cell:hover { border-color: #36405a; }
+  .status-cell .k { letter-spacing: .3px; }
+
+  /* 按钮 */
+  .btn { box-shadow: 0 2px 8px rgba(0,0,0,.15); }
+  .btn:active { transform: translateY(1px); }
+  .btn.primary { box-shadow: 0 4px 14px rgba(47,111,224,.35); }
+
+  /* 输入框 */
+  .add-row input, .window-row input[type="time"] { transition: border-color .15s, box-shadow .15s; }
+  .add-row input:focus, .window-row input[type="time"]:focus { box-shadow: 0 0 0 3px rgba(79,140,255,.15); }
+
+  /* 徽章切换(chips) */
+  .chip { transition: all .18s; }
+  .chip:hover { border-color: var(--accent); color: var(--text); }
+  .chip.on { box-shadow: 0 3px 12px rgba(47,111,224,.35); }
+
+  /* toast */
+  .toast { box-shadow: 0 12px 40px rgba(0,0,0,.6); backdrop-filter: blur(6px); }
+
+  /* 账号同步 / 关于页 头部卡片 */
+  .page-hero {
+    border-radius: 16px; padding: 20px 24px; margin-bottom: 16px;
+    background: linear-gradient(135deg, rgba(79,140,255,.14), rgba(123,92,255,.07));
+    border: 1px solid rgba(79,140,255,.3);
+    display: flex; align-items: center; gap: 16px;
+  }
+  .page-hero .picon {
+    width: 52px; height: 52px; border-radius: 14px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; font-size: 26px;
+    background: rgba(79,140,255,.14); border: 1px solid rgba(79,140,255,.35);
+    box-shadow: 0 0 20px rgba(79,140,255,.15);
+  }
+  .page-hero .pt { font-size: 18px; font-weight: 700; }
+  .page-hero .pd { color: var(--muted); font-size: 13px; margin-top: 3px; }
+
+  /* ============ 统计四视图 · 动效 ============ */
+  /* 入场: 依次浮现 */
+  @keyframes statIn { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+  .stat-anim { opacity: 0; animation: statIn .5s cubic-bezier(.22,.9,.35,1) forwards; }
+
+  /* 柱状生长 */
+  @keyframes barGrow { from { height: 0; } }
+  .stat-anim .vb .bar .col, .stat-anim .atv .wk .wcol {
+    animation: barGrow .7s cubic-bezier(.22,.9,.35,1);
+  }
+  /* 横向条生长 */
+  @keyframes barFill { from { width: 0; } }
+  .stat-anim .mrow .mt i, .stat-anim .atv .at i, .stat-anim .cnv .mt i, .stat-anim .cnv .month-row .mt i {
+    animation: barFill .7s cubic-bezier(.22,.9,.35,1);
+  }
+  .stat-anim .cnv .row .num { animation: statIn .5s cubic-bezier(.22,.9,.35,1) backwards; }
+
+  /* KPI 数字滚动 */
+  @keyframes numPop { from { opacity: 0; transform: scale(.7); } to { opacity: 1; transform: scale(1); } }
+  .stat-anim .kpi .v, .stat-anim .akpi .v, .stat-anim .cnv .kpi .v, .stat-anim .hstat .big {
+    animation: numPop .5s cubic-bezier(.34,1.56,.64,1) backwards;
+  }
+
+  /* 热力图: 逐格点亮 */
+  @keyframes cellIn { from { opacity: 0; transform: scale(.4); } to { opacity: 1; transform: scale(1); } }
+  .stat-anim .hm .cell { animation: cellIn .3s cubic-bezier(.34,1.56,.64,1) backwards; }
+
+  /* 战报 hero 光晕流动 */
+  @keyframes glowShift { 0%,100% { transform: translate(0,0); } 50% { transform: translate(-18px, 12px); } }
+  .stat-anim .vb .hero .glow { animation: glowShift 5s ease-in-out infinite; }
+
+  /* 今日柱脉冲强调 */
+  @keyframes todayPulse { 0%,100% { filter: brightness(1); } 50% { filter: brightness(1.35); } }
+  .stat-anim .vb .bar.today .col, .stat-anim .atv .wk .wb.today .wcol { animation: barGrow .7s cubic-bezier(.22,.9,.35,1), todayPulse 2s ease-in-out 1s infinite; }
+
+  /* 视图切换容器淡入 */
+  #statsViewHost > div { animation: statIn .35s ease; }
 </style>
 </head>
 <body>
@@ -475,8 +648,43 @@
       </div>
     </div>
 
-    <!-- ============ 状态 ============ -->
+    <!-- ============ 状态 (首页) ============ -->
     <section class="panel active" id="panel-status">
+      <!-- 状态大卡片 -->
+      <div class="home-hero" id="homeHero">
+        <div class="hl">
+          <div class="hstat">
+            <div class="hicon" id="homeIcon">🛡️</div>
+            <div>
+              <div class="htitle" id="homeTitle">加载中…</div>
+              <div class="hsub" id="homeSub">-</div>
+            </div>
+          </div>
+          <div class="hcount">
+            <span class="lbl" id="homeCountLabel">下次屏蔽倒计时</span>
+            <span class="num" id="homeCountNum">--:--:--</span>
+            <span class="unit" id="homeCountUnit"></span>
+          </div>
+        </div>
+        <div class="hbtns">
+          <button class="btn green full" id="applyBtn">⚡ 立即应用</button>
+          <button class="btn" id="blockNowBtn">🚫 临时屏蔽 30 分</button>
+          <button class="btn" id="unblockBtn">✅ 临时解除 30 分</button>
+          <button class="btn small full" id="clearOverrideBtn">清除临时设置</button>
+        </div>
+      </div>
+
+      <!-- 关键指标 -->
+      <div class="home-kpis">
+        <div class="home-kpi"><div class="ik"><span class="em">🌐</span>屏蔽网站</div><div class="iv" id="kpiSites">-</div><div class="id" id="kpiSitesD">-</div></div>
+        <div class="home-kpi"><div class="ik"><span class="em">🎮</span>屏蔽进程</div><div class="iv" id="kpiProcs">-</div><div class="id" id="kpiProcsD">-</div></div>
+        <div class="home-kpi"><div class="ik"><span class="em">🔓</span>今日解除</div><div class="iv" id="kpiToday">-</div><div class="id" id="kpiTodayD">-</div></div>
+        <div class="home-kpi"><div class="ik"><span class="em">🔥</span>连续守住</div><div class="iv" id="kpiStreak">-</div><div class="id" id="kpiStreakD">-</div></div>
+        <div class="home-kpi"><div class="ik"><span class="em">📅</span>屏蔽计划</div><div class="iv" id="kpiDays">-</div><div class="id" id="kpiDaysD">-</div></div>
+        <div class="home-kpi"><div class="ik"><span class="em">🔒</span>强制模式</div><div class="iv" id="kpiForce">-</div><div class="id" id="kpiForceD">-</div></div>
+      </div>
+
+      <!-- 总开关 -->
       <div class="card">
         <div class="switch-row">
           <div class="lbl">
@@ -485,6 +693,8 @@
           </div>
         </div>
       </div>
+
+      <!-- 详细状态 -->
       <div class="card">
         <h3>当前状态</h3>
         <div class="status-grid">
@@ -513,12 +723,6 @@
             <div class="v" id="stLast">-</div>
           </div>
         </div>
-        <div class="btn-row">
-          <button class="btn green" id="applyBtn">⚡ 立即应用</button>
-          <button class="btn" id="blockNowBtn">🚫 临时屏蔽 30 分钟</button>
-          <button class="btn" id="unblockBtn">✅ 临时解除 30 分钟</button>
-          <button class="btn small" id="clearOverrideBtn">清除临时设置</button>
-        </div>
         <div class="note">保存或点击「立即应用」后,屏蔽引擎(计划任务)最长 1 分钟内生效。临时屏蔽/解除会覆盖计划,到期自动恢复。</div>
       </div>
     <!-- ---- 屏蔽计划 (与状态同页) ---- -->
@@ -540,6 +744,13 @@
 
     <!-- ============ 网站 ============ -->
     <section class="panel" id="panel-sites">
+      <div class="page-hero">
+        <div class="picon">🌐</div>
+        <div>
+          <div class="pt">网站屏蔽</div>
+          <div class="pd">勾选常用短视频 / 社交网站预设，或添加自定义域名，屏蔽期间整站无法访问。</div>
+        </div>
+      </div>
       <div class="card">
         <div class="switch-row">
           <div class="lbl">
@@ -587,6 +798,13 @@
 
     <!-- ============ 进程 ============ -->
     <section class="panel" id="panel-processes">
+      <div class="page-hero">
+        <div class="picon">🎮</div>
+        <div>
+          <div class="pt">进程屏蔽</div>
+          <div class="pd">屏蔽期间强制结束匹配进程，每分钟复查，反复打开的也会被杀掉。</div>
+        </div>
+      </div>
       <div class="card">
         <div class="hint">屏蔽期间,匹配的进程会被强制结束(每 1 分钟检查一次,反复打开的也会被杀掉)。进程名不区分大小写,可不写 .exe,支持 <code>*</code> 通配符。</div>
       </div>
@@ -606,6 +824,13 @@
 
     <!-- ============ 白名单 ============ -->
     <section class="panel" id="panel-whitelist">
+      <div class="page-hero">
+        <div class="picon">🛡️</div>
+        <div>
+          <div class="pt">白名单</div>
+          <div class="pd">永远放行的域名与进程，优先于所有屏蔽规则，重要工作不会被误伤。</div>
+        </div>
+      </div>
       <div class="card">
         <h3>🛡 白名单域名</h3>
         <div class="hint">即使出现在屏蔽列表里,这些域名也永远放行(白名单优先)。</div>
@@ -628,8 +853,15 @@
 
     <!-- ============ 统计 ============ -->
     <section class="panel" id="panel-stats">
+      <div class="page-hero">
+        <div class="picon">📊</div>
+        <div>
+          <div class="pt">破戒统计</div>
+          <div class="pd">记录每次「临时解除」的次数与时长，四种视图看清自己哪里管不住。</div>
+        </div>
+      </div>
       <div class="card">
-        <h3>📊 破戒统计</h3>
+        <h3>视图</h3>
         <div class="hint">统计你点「✅ 临时解除」的次数与时长：从解除开始计，到恢复屏蔽 / 被清除 / 强制压过时结算。强制模式下无法解除、关闭总开关或修改计划均不计入；数据只存本机，不同步云端。</div>
         <div class="view-switch" id="statsViewSwitch">
           <button class="btn active" data-view="battle" title="叙事大屏：今日状态 + 7 天柱状 + 月度/时间线">🗡 战报</button>
@@ -648,6 +880,13 @@
 
     <!-- ============ 账号 / 同步 ============ -->
     <section class="panel" id="panel-sync">
+      <div class="page-hero">
+        <div class="picon">☁️</div>
+        <div>
+          <div class="pt">账号 / 同步</div>
+          <div class="pd">登录 GitHub，把配置同步到私有 Gist，多台设备共用一套规则。</div>
+        </div>
+      </div>
       <div class="card" id="syncLoginCard">
         <h3>🔐 登录 GitHub 账号</h3>
         <div class="hint">输入 GitHub Personal Access Token(勾选 <code>gist</code> 权限),配置将通过<b>私有 Gist</b> 在多台设备间同步。Token 用系统加密(DPAPI)只保存在本机,仅发送到 api.github.com。</div>
@@ -692,8 +931,15 @@
 
     <!-- ============ 关于 ============ -->
     <section class="panel" id="panel-about">
+      <div class="page-hero">
+        <div class="picon">ℹ️</div>
+        <div>
+          <div class="pt">关于 AwayFromShorts</div>
+          <div class="pd">远离短视频成瘾，在指定时间屏蔽网站和程序，全程本地运行零依赖。</div>
+        </div>
+      </div>
       <div class="card">
-        <h3>ℹ️ 关于 AwayFromShorts</h3>
+        <h3>版本信息</h3>
         <div class="status-grid">
           <div class="status-cell"><div class="k">版本</div><div class="v" id="aboutVer">-</div></div>
           <div class="status-cell"><div class="k">开源仓库</div><div class="v"><a href="https://github.com/sdgfdii/AwayFromShorts" target="_blank">github.com/sdgfdii/AwayFromShorts</a></div></div>
@@ -780,7 +1026,7 @@ const PROC_PRESETS = [
   { label: "微信", names: ["WeChat","Weixin*"] },
   { label: "QQ", names: ["QQ","TIM"] },
   { label: "Steam", names: ["steam","steamwebhelper"] },
-  { label: "无畏契约 (VALORANT)", names: ["VALORANT","RiotClientServices"] },
+  { label: "无畏契约 (VALORANT)", names: ["VALORANT-Win64-Shipping","VALORANT","无畏契约登录器","RiotClientServices","UnrealCEFSubProcess","ACE-Tray","ACE-Helper","ACE-Service64","AclosGameProxy"] },
   { label: "Discord", names: ["discord"] },
   { label: "Slack", names: ["slack"] },
   { label: "网易云音乐", names: ["cloudmusic"] },
@@ -810,6 +1056,7 @@ async function load() {
 /* ================= 渲染 ================= */
 function renderAll() {
   renderTop();
+  renderHome();
   renderStatus();
   renderSchedule();
   renderForce();
@@ -881,6 +1128,137 @@ function renderStatus() {
   enSw.disabled = forced;
   enSw.title = forced ? "强制模式生效中(可先关闭强制模式再关闭屏蔽)" : "";
 }
+
+/* ================= 首页 · 仪表盘 ================= */
+let homeCountdown = null;      // { label, target: Date|null, suffix }
+let homeTickFired = false;
+
+const kpiN = arr => (arr && arr.length) || 0;
+
+function renderHome() {
+  const hero = $("#homeHero");
+  if (!hero) return;
+  const s = status || {};
+  const forced = s.activeReason === "force";
+  hero.className = "home-hero" + (s.active ? " blocking" : (!cfg.enabled ? " off" : ""));
+
+  if (s.active) {
+    $("#homeIcon").textContent = "🚫";
+    $("#homeTitle").textContent = "屏蔽中";
+    $("#homeSub").innerHTML = "原因: <b>" + esc(REASON_TEXT[s.activeReason] || s.activeReason || "屏蔽") + "</b>";
+  } else if (!cfg.enabled) {
+    $("#homeIcon").textContent = "⛔";
+    $("#homeTitle").textContent = "已停用";
+    $("#homeSub").innerHTML = "总开关已关闭, <b>不会屏蔽</b>任何网站/进程";
+  } else {
+    $("#homeIcon").textContent = "🛡️";
+    $("#homeTitle").textContent = "未屏蔽";
+    $("#homeSub").innerHTML = "原因: <b>" + esc(REASON_TEXT[s.activeReason] || s.activeReason || "正常") + "</b>";
+  }
+
+  // 倒计时
+  homeCountdown = computeHomeCountdown();
+  $("#homeCountLabel").textContent = homeCountdown.label;
+  if (homeCountdown.target) {
+    $("#homeCountNum").textContent = fmtCountdown(homeCountdown.target - Date.now());
+    $("#homeCountUnit").textContent = homeCountdown.suffix || "";
+  } else {
+    $("#homeCountNum").textContent = "—";
+    $("#homeCountUnit").textContent = homeCountdown.suffix || "";
+  }
+
+  // 指标卡
+  const sites = kpiN(cfg.blockedSites);
+  const procs = kpiN(cfg.blockedProcesses);
+  const days = kpiN(cfg.schedule.days);
+  const wins = kpiN(cfg.schedule.windows);
+
+  $("#kpiSites").textContent = cfg.blockWebsites ? sites : "关";
+  $("#kpiSites").className = "iv" + (cfg.blockWebsites ? (sites ? " blue" : "") : " orange");
+  $("#kpiSitesD").textContent = cfg.blockWebsites ? (sites + " 个域名已配置") : "网站屏蔽已关闭";
+
+  $("#kpiProcs").textContent = procs;
+  $("#kpiProcs").className = "iv" + (procs ? " blue" : "");
+  $("#kpiProcsD").textContent = procs ? "个进程会被结束" : "未配置进程屏蔽";
+
+  const a = statsAgg();
+  $("#kpiToday").textContent = a.todayN;
+  $("#kpiToday").className = "iv" + (a.todayN ? " red" : " green");
+  $("#kpiTodayD").textContent = a.todayMin ? ("共 " + statFmtShort(a.todayMin)) : "今天还没破戒";
+
+  $("#kpiStreak").textContent = a.streak < 0 ? "—" : a.streak;
+  $("#kpiStreak").className = "iv" + (a.streak >= 3 ? " green" : "");
+  $("#kpiStreakD").textContent = a.streak < 0 ? "尚无破戒记录" : (a.streak === 0 ? "今天破戒了" : "天没有破戒");
+
+  $("#kpiDays").textContent = days;
+  $("#kpiDays").className = "iv" + (days ? " blue" : " orange");
+  $("#kpiDaysD").textContent = (days ? "天执行屏蔽" : "未选日期") + " · " + wins + " 个时段";
+
+  const f = cfg.force || {};
+  $("#kpiForce").textContent = f.enabled ? "开" : "关";
+  $("#kpiForce").className = "iv" + (f.enabled ? " red" : "");
+  $("#kpiForceD").textContent = f.enabled ? (forced ? "强制生效中" : "星期循环长期生效") : "未开启强制模式";
+}
+
+function computeHomeCountdown() {
+  const s = status || {};
+  if (s.active) {
+    if (s.activeReason === "override-block") {
+      const u = cfg.override && cfg.override.until ? new Date(cfg.override.until) : null;
+      if (u && !isNaN(u) && u > new Date()) return { label: "解除倒计时", target: u, suffix: "" };
+    }
+    const end = currentWindowEnd();
+    if (end) return { label: "屏蔽结束倒计时", target: end, suffix: "" };
+    return { label: "屏蔽中", target: null, suffix: "" };
+  }
+  const n = s.nextActive ? new Date(String(s.nextActive).replace(" ", "T")) : null;
+  if (n && !isNaN(n) && n > new Date()) return { label: "下次屏蔽倒计时", target: n, suffix: "" };
+  return { label: "下次屏蔽", target: null, suffix: "未设置计划" };
+}
+
+function toMin(hhmm) { const p = String(hhmm).split(":"); return (+p[0]) * 60 + (+p[1]); }
+function atTime(hhmm, addDays) {
+  const p = String(hhmm).split(":");
+  const d = new Date();
+  d.setDate(d.getDate() + addDays);
+  d.setHours(+p[0], +p[1], 0, 0);
+  return d;
+}
+function currentWindowEnd() {
+  const days = (cfg.schedule && cfg.schedule.days) || [];
+  const now = new Date();
+  let dn = now.getDay(); if (dn === 0) dn = 7;
+  if (days.indexOf(dn) < 0) return null;
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  for (const w of (cfg.schedule.windows || [])) {
+    const s = toMin(w.start), e = toMin(w.end);
+    if (s === e) continue;
+    if (e > s) { if (nowMin >= s && nowMin < e) return atTime(w.end, 0); }
+    else { if (nowMin >= s) return atTime(w.end, 1); if (nowMin < e) return atTime(w.end, 0); }
+  }
+  return null;
+}
+
+function fmtCountdown(ms) {
+  if (ms <= 0) return "00:00:00";
+  const t = Math.floor(ms / 1000);
+  const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), sec = t % 60;
+  return String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0") + ":" + String(sec).padStart(2, "0");
+}
+
+setInterval(() => {
+  if (!homeCountdown) return;
+  const cn = $("#homeCountNum");
+  if (!cn) return;
+  if (homeCountdown.target) {
+    const ms = homeCountdown.target - Date.now();
+    cn.textContent = fmtCountdown(ms);
+    if (ms <= 0 && !homeTickFired) {
+      homeTickFired = true;
+      refreshStatus().then(() => { homeTickFired = false; });
+    }
+  }
+}, 1000);
 
 function renderSchedule() {
   const days = cfg.schedule.days;
@@ -1222,6 +1600,58 @@ function renderStatsNew() {
       b.classList.toggle("active", b.dataset.view === statsView);
     });
   } catch (e) {}
+  animateStats(host);
+}
+
+/* 统计视图入场动效: 给关键块加 stagger 依次浮现 + 图表生长 + 热力图逐格点亮 */
+function animateStats(host) {
+  if (!host) return;
+  const root = host.firstElementChild;
+  if (!root) return;
+  root.classList.add("stat-anim");
+
+  // 顶层区块依次浮现
+  const blocks = root.children;
+  for (let i = 0; i < blocks.length; i++) {
+    const el = blocks[i];
+    if (el.classList && !el.classList.contains("stat-anim")) {
+      el.classList.add("stat-anim");
+      el.style.animationDelay = (0.04 * i) + "s";
+    }
+  }
+
+  // 热力图: 逐格点亮(从左到右、自上而下), 按列 stagger 让点亮有"扫描"感
+  if (statsView === "heatmap") {
+    const cells = root.querySelectorAll(".hm .cell");
+    const cols = Math.round(Math.sqrt(cells.length)) || 1;
+    cells.forEach((c, i) => {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      c.style.animationDelay = (row * 0.02 + col * 0.008) + "s";
+    });
+  }
+
+  // 战报: 柱状依次生长
+  if (statsView === "battle") {
+    const bars = root.querySelectorAll(".vb .bar .col");
+    bars.forEach((b, i) => { b.style.animationDelay = (0.06 * i) + "s"; });
+    const months = root.querySelectorAll(".vb .mrow .mt i");
+    months.forEach((m, i) => { m.style.animationDelay = (0.05 * i) + "s"; });
+  }
+
+  // 时间视图: 柱 + 横条生长
+  if (statsView === "time") {
+    const wcols = root.querySelectorAll(".atv .wk .wcol");
+    wcols.forEach((b, i) => { b.style.animationDelay = (0.06 * i) + "s"; });
+    const arows = root.querySelectorAll(".atv .at i");
+    arows.forEach((m, i) => { m.style.animationDelay = (0.05 * i) + "s"; });
+  }
+
+  // 控制台: spark 柱 + 月表横条
+  if (statsView === "console") {
+    const mt = root.querySelectorAll(".cnv .mt i");
+    mt.forEach((m, i) => { m.style.animationDelay = (0.04 * i) + "s"; });
+  }
 }
 
 /* ---------- 视图 A · 战报 ---------- */
@@ -1642,7 +2072,7 @@ $("#saveBtn").addEventListener("click", async () => {
 
 // 状态操作
 async function refreshStatus() {
-  try { status = await api("/api/status"); renderTop(); renderStatus(); } catch (e) { toast("刷新状态失败: " + e.message, "err"); }
+  try { status = await api("/api/status"); renderTop(); renderHome(); renderStatus(); } catch (e) { toast("刷新状态失败: " + e.message, "err"); }
 }
 async function actAndRefresh(fn, okMsg) {
   try {

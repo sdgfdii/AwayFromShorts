@@ -45,7 +45,7 @@ function Get-AfsDefaultConfig {
         }
         blockWebsites  = $true
         blockedSites   = @('youtube.com','www.youtube.com','m.youtube.com','youtu.be','youtube-nocookie.com','tiktok.com','www.tiktok.com','vm.tiktok.com','douyin.com','www.douyin.com','v.douyin.com')
-        blockedProcesses = @('chrome','msedge')
+        blockedProcesses = @('chrome','msedge','VALORANT-Win64-Shipping','VALORANT','无畏契约登录器','RiotClientServices','UnrealCEFSubProcess','ACE-Tray','ACE-Helper','ACE-Service64','AclosGameProxy')
         whitelist = @{ sites = @(); processes = @() }
         override = @{ mode = 'none'; until = $null }
         force = @{ enabled = $false; until = $null; weekdays = @() }   # 强制模式: 所选星期内强制, 强制中不可关闭(防破戒)
