@@ -509,6 +509,89 @@ function Clear-AfsStats {
     if (Test-Path $p) { Remove-Item $p -Force -ErrorAction SilentlyContinue }
 }
 
+# ---------- 活动时间统计 (ActivityWatch 式) ----------
+# 记录"前台使用时间": 由面板(交互会话)每 60 秒采样一次前台窗口,
+# 进程/站点按天聚合到 activity.json; 超过 3 分钟无键鼠输入视为离开, 不计时。
+# 引擎(S4U 会话)无法访问桌面, 不参与采样。进程分钟数=前台活跃分钟(已剔除离开时间)。
+
+$script:AFS_ACTIVITY_FILE = 'activity.json'
+$script:AFS_ACTIVITY_KEEP  = 60
+
+function Get-AfsActivityPath { (Join-Path (Split-Path (Get-AfsConfigPath)) $script:AFS_ACTIVITY_FILE) }
+
+function Read-AfsActivity {
+    $p = Get-AfsActivityPath
+    if (Test-Path $p) {
+        try { return ConvertTo-AfsHashtable (ConvertFrom-Json ([System.IO.File]::ReadAllText($p, [System.Text.Encoding]::UTF8))) } catch { }
+    }
+    @{ version = 1; days = @{} }
+}
+
+function Save-AfsActivity {
+    param($Activity)
+    $utf8 = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText((Get-AfsActivityPath), (ConvertTo-Json $Activity -Depth 12), $utf8)
+}
+
+# Win32: 前台窗口 / 全局输入空闲检测 (需交互会话)
+$csNative = @(
+    '[DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();'
+    '[DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);'
+    '[DllImport("user32.dll")] public static extern bool GetLastInputInfo(ref LASTINPUTINFO info);'
+    'public struct LASTINPUTINFO { public uint cbSize; public uint dwTime; }'
+)
+try { Add-Type -Namespace AfsWin32 -Name Native -MemberDefinition ($csNative -join "`n") -ErrorAction Stop } catch { }
+
+function Get-AfsIdleSeconds {
+    try {
+        $i = New-Object AfsWin32.Native+LASTINPUTINFO
+        $i.cbSize = [System.Runtime.InteropServices.Marshal]::SizeOf([type][AfsWin32.Native+LASTINPUTINFO])
+        if ([AfsWin32.Native]::GetLastInputInfo([ref]$i)) {
+            $now = [uint32][Environment]::TickCount
+            $diff = [int]($now - $i.dwTime)
+            if ($diff -lt 0) { $diff = 0 }
+            return [int]($diff / 1000)
+        }
+    } catch { }
+    return 0
+}
+
+$script:AFS_SITE_WORDS = @('bilibili','youtube','douyin','tiktok','instagram','kuaishou','weibo','zhihu','reddit','pinterest','snapchat','huya','twitch','xiaohongshu','tieba','xiaoheihe','b23','acfun')
+
+function Invoke-AfsActivitySample {
+    $a = Read-AfsActivity
+    $today = (Get-Date).ToString('yyyy-MM-dd')
+    if (-not $a.days.ContainsKey($today)) { $a.days[$today] = @{ apps = @{}; sites = @{} } }
+    if ((Get-AfsIdleSeconds) -gt 180) { Save-AfsActivity $a; return }
+    $hwnd = [AfsWin32.Native]::GetForegroundWindow()
+    if ($hwnd -eq [IntPtr]::Zero) { Save-AfsActivity $a; return }
+    $wp = [uint32]0
+    [void][AfsWin32.Native]::GetWindowThreadProcessId($hwnd, [ref]$wp)
+    $proc = Get-Process -Id $wp -ErrorAction SilentlyContinue
+    if (-not $proc) { Save-AfsActivity $a; return }
+    $app = $proc.ProcessName
+    if (-not $app) { Save-AfsActivity $a; return }
+    $title = ''
+    try { $title = [string]$proc.MainWindowTitle } catch { }
+    $d = $a.days[$today]
+    if (-not $d.apps.ContainsKey($app)) { $d.apps[$app] = 0 }
+    $d.apps[$app] = [int]$d.apps[$app] + 1
+    if ($app -in @('msedge','chrome','firefox','opera','brave','vivaldi') -and $title) {
+        $tl = $title.ToLower()
+        foreach ($w in $script:AFS_SITE_WORDS) {
+            if ($tl -like "*$w*") {
+                if (-not $d.sites.ContainsKey($w)) { $d.sites[$w] = 0 }
+                $d.sites[$w] = [int]$d.sites[$w] + 1
+                break
+            }
+        }
+    }
+    $keys = @($a.days.Keys | Sort-Object -Descending)
+    if ($keys.Count -gt $script:AFS_ACTIVITY_KEEP) {
+        foreach ($k in $keys | Select-Object -Skip $script:AFS_ACTIVITY_KEEP) { $a.days.Remove($k) }
+    }
+    Save-AfsActivity $a
+}
 # ---------- 浏览器窗口(工作区)屏蔽 ----------
 # 屏蔽时优雅关闭标题匹配的浏览器窗口(例如 Edge 的"娱乐"工作区), 其他窗口/工作区不受影响。
 # 关闭动作必须跑在用户交互会话里(S4U 计划任务无法操作桌面窗口),

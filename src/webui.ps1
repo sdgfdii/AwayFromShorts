@@ -268,6 +268,10 @@ $handler = {
             Send-AfsJson -Stream $stream -Status 200 -Obj @{ ok = $true; stats = (Read-AfsStats) }
             return
         }
+        if ($method -eq 'GET' -and $path -eq '/api/activity') {
+            Send-AfsJson -Stream $stream -Status 200 -Obj @{ ok = $true; activity = (Read-AfsActivity) }
+            return
+        }
         if ($method -eq 'POST' -and $path -eq '/api/stats/clear') {
             try {
                 Clear-AfsStats
@@ -390,13 +394,25 @@ try {
 
 Write-Output "AwayFromShorts 配置面板已启动: http://127.0.0.1:$Port/  (Ctrl+C 停止)"
 
+$script:AFS_LAST_SAMPLE = [int][DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
 while (-not $script:AFS_STOP) {
-    try {
-        $client = $listener.AcceptTcpClient()
-        & $handler $client
-    } catch {
-        if ($script:AFS_STOP) { break }
-        Start-Sleep -Milliseconds 200
+    $pending = $false
+    try { $pending = $listener.Pending() } catch { }
+    if ($pending) {
+        try {
+            $client = $listener.AcceptTcpClient()
+            & $handler $client
+        } catch {
+            if ($script:AFS_STOP) { break }
+        }
+    } else {
+        Start-Sleep -Milliseconds 800
+        # 活动时间采样: 每 60 秒记录一次前台窗口 (面板在交互会话, 可访问桌面)
+        $nowSec = [int][DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+        if (($nowSec - $script:AFS_LAST_SAMPLE) -ge 60) {
+            $script:AFS_LAST_SAMPLE = $nowSec
+            try { Invoke-AfsActivitySample } catch { }
+        }
     }
 }
 $listener.Stop()

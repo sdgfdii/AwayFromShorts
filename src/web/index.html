@@ -412,6 +412,39 @@
   .cnv .log-row .dow { color:var(--muted); text-align:right; }
   .cnv .log-row .du { text-align:right; font-weight:700; color:#ff9ba3; font-variant-numeric:tabular-nums; }
   .cnv .stat-empty { color:var(--muted); text-align:center; padding:18px 0 6px; font-size:12px; }
+
+  /* ---------- 视图 D · 时间去向 (.atv) ---------- */
+  .atv .akpis { display:grid; grid-template-columns:repeat(4,1fr); gap:1px; background:var(--border); border:1px solid var(--border); border-radius:10px; overflow:hidden; }
+  @media (max-width:640px){ .atv .akpis{grid-template-columns:repeat(2,1fr)} }
+  .atv .akpi { background:var(--panel); padding:10px 13px 9px; }
+  .atv .akpi .k { font-size:10px; color:var(--muted); letter-spacing:.08em; }
+  .atv .akpi .v { font-size:19px; font-weight:750; font-variant-numeric:tabular-nums; margin-top:1px; }
+  .atv .akpi .v .u { font-size:10.5px; color:var(--muted); font-weight:600; margin-left:1px; }
+  .atv .akpi .d { font-size:10px; color:var(--muted); }
+  .atv .ax { margin-top:13px; }
+  .atv .ax .sh { display:flex; align-items:center; gap:8px; margin-bottom:7px; }
+  .atv .ax .sh .st { font-size:10.5px; font-weight:700; letter-spacing:.09em; color:var(--muted); }
+  .atv .abox { background:var(--panel); border:1px solid var(--border); border-radius:10px; overflow:hidden; }
+  .atv .arow { display:grid; grid-template-columns:120px 1fr 88px; gap:10px; align-items:center; padding:6px 13px; border-bottom:1px solid #1b1f2a; font-size:12.5px; }
+  .atv .arow:last-child { border-bottom:none; }
+  .atv .arow:hover { background:var(--panel2); }
+  .atv .arow .an { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .atv .arow .an code { color:#a8c7ff; font-family:Consolas,monospace; font-size:11.5px; }
+  .atv .at { height:8px; background:var(--border); border-radius:99px; overflow:hidden; }
+  .atv .at i { display:block; height:100%; border-radius:99px; background:linear-gradient(90deg,#4f8cff,#7b5cff); }
+  .atv .at.site i { background:linear-gradient(90deg,#34c77b,#2f9e7a); }
+  .atv .av { text-align:right; color:var(--muted); font-variant-numeric:tabular-nums; }
+  .atv .av b { color:var(--text); }
+  .atv .acols { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  @media (max-width:760px){ .atv .acols{grid-template-columns:1fr} }
+  .atv .wk { display:flex; align-items:flex-end; gap:8px; height:90px; padding:4px 6px 0; }
+  .atv .wk .wb { flex:1; display:flex; flex-direction:column; align-items:center; gap:4px; justify-content:flex-end; height:100%; min-width:0; }
+  .atv .wk .wb .wcol { width:100%; max-width:34px; border-radius:5px 5px 2px 2px; background:linear-gradient(180deg,#5f9bff,#4f8cff); min-height:3px; }
+  .atv .wk .wb .wcol.zero { background:var(--panel2); border:1px dashed var(--border); }
+  .atv .wk .wb.today .wcol { box-shadow:0 0 0 1px var(--accent), 0 0 14px rgba(79,140,255,.45); }
+  .atv .wk .wb .wl { font-size:10px; color:var(--muted); white-space:nowrap; }
+  .atv .wk .wb.today .wl { color:var(--text); font-weight:700; }
+  .atv .stat-empty { color:var(--muted); text-align:center; padding:18px 0 6px; font-size:12px; }
 </style>
 </head>
 <body>
@@ -606,6 +639,7 @@
           <button class="btn active" data-view="battle" title="叙事大屏：今日状态 + 7 天柱状 + 月度/时间线">🗡 战报</button>
           <button class="btn" data-view="heatmap" title="年热力图：一眼看清每天 / 哪个月失控 + 洞察">🔥 热力图</button>
           <button class="btn" data-view="console" title="表格控制台：KPI + 环比箭头 + 明细日志">▤ 控制台</button>
+          <button class="btn" data-view="time" title="时间去向：ActivityWatch 式自动记录前台使用时长(进程/站点)">⏱ 时间</button>
         </div>
         <div class="view-live" id="statLive"></div>
         <div id="statsViewHost"></div>
@@ -703,6 +737,7 @@ let cfg = null;
 let status = null;
 let acct = null;
 let stats = null;
+let activity = null;
 let dirty = false;
 
 const $ = s => document.querySelector(s);
@@ -760,11 +795,12 @@ const DAY_LABELS = ["一","二","三","四","五","六","日"];
 /* ================= 加载 ================= */
 async function load() {
   try {
-    const [c, s, a, st] = await Promise.all([api("/api/config"), api("/api/status"), api("/api/account"), api("/api/stats")]);
+    const [c, s, a, st, act] = await Promise.all([api("/api/config"), api("/api/status"), api("/api/account"), api("/api/stats"), api("/api/activity")]);
     cfg = c.config;
     status = s;
     acct = a.account;
     stats = st.stats;
+    activity = act.activity;
     $("#verTag").textContent = s.version;
     $("#aboutVer").textContent = "v" + s.version;
     $("#aboutPort").textContent = (c.config.web && c.config.web.port) || 8737;
@@ -1165,6 +1201,7 @@ function renderStatsNew() {
   renderStatsLive(a);
   host.innerHTML = statsView === "heatmap" ? statsViewHeatmap(a)
     : statsView === "console" ? statsViewConsole(a)
+    : statsView === "time" ? statsViewTime()
     : statsViewBattle(a);
   try {
     document.querySelectorAll("#statsViewSwitch .btn").forEach(b => {
@@ -1358,6 +1395,54 @@ function statsViewConsole(a) {
   </div>`;
 }
 
+/* ---------- 视图 D · 时间去向 (ActivityWatch 式前台记录) ---------- */
+function statsViewTime() {
+  const act = (activity && activity.days) ? activity : { days: {} };
+  const days = act.days || {};
+  const now = new Date();
+  const today = statDayStr(now);
+  const g = k => (days[k] || { apps: {}, sites: {} });
+  const APP_N = { msedge: 'Edge', chrome: 'Chrome', firefox: 'Firefox', opera: 'Opera', brave: 'Brave', code: 'VS Code', powershell: 'PowerShell', windowsTerminal: '终端', cloudmusic: '网易云音乐', VALORANT: '无畏契约', valorant: '无畏契约', steam: 'Steam', steamwebhelper: 'Steam', discord: 'Discord', qq: 'QQ', tim: 'TIM', wechat: '微信', weixin: '微信', explorer: '资源管理器', notepad: '记事本', winword: 'Word', excel: 'Excel', powerpnt: 'PowerPoint', typora: 'Typora', idea64: 'IntelliJ', devenv: 'Visual Studio', pycharm64: 'PyCharm', msedgewebview2: 'WebView2', applicationframehost: 'UWP 应用' };
+  const SITE_N = { bilibili: '哔哩哔哩', b23: 'B站(b23)', youtube: 'YouTube', douyin: '抖音', tiktok: 'TikTok', zhihu: '知乎', weibo: '微博', reddit: 'Reddit', instagram: 'Instagram', kuaishou: '快手', xiaohongshu: '小红书', xiaoheihe: '小黑盒', acfun: 'AcFun', twitch: 'Twitch', huya: '虎牙', tieba: '百度贴吧', pinterest: 'Pinterest', snapchat: 'Snapchat' };
+  const nm = (p, m) => (m[p] || p);
+  const fmt = m => (m >= 60 ? Math.floor(m / 60) + ' 小时' + (m % 60 ? ' ' + (m % 60) + ' 分' : '') : m + ' 分钟');
+  const empt = m => '<div class="stat-empty">' + m + '</div>';
+  const dl = [];
+  for (let i = 6; i >= 0; i--) { const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i); dl.push(statDayStr(d)); }
+  const tot = k => Object.values(g(k).apps).reduce((x, y) => x + y, 0);
+  const weekTot = dl.map(tot);
+  const wkMax = Math.max(1, ...weekTot);
+  const todayTot = tot(today);
+  const w7 = weekTot.reduce((x, y) => x + y, 0);
+  const tApps = g(today).apps, tSites = g(today).sites;
+  const appsTop = Object.entries(tApps).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  const sitesTop = Object.entries(tSites).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  const maxA = Math.max(1, ...appsTop.map(x => x[1]));
+  const maxS = Math.max(1, ...sitesTop.map(x => x[1]));
+  const rows = (arr, max, typ) => arr.length ? arr.map(r =>
+    '<div class="arow"><div class="an"><code>' + nm(r[0], typ === 's' ? SITE_N : APP_N) + '</code></div>' +
+    '<div class="at' + (typ === 's' ? ' site' : '') + '"><i style="width:' + Math.max(4, Math.round(r[1] / max * 100)) + '%"></i></div>' +
+    '<div class="av"><b>' + fmt(r[1]) + '</b></div></div>').join('')
+    : empt(typ === 's' ? '暂无站点记录：浏览器中打开网页后会显示' : '暂无记录：保持面板开启自动采样');
+  const wk = dl.map((d, i) => {
+    const v = weekTot[i], isT = d === today;
+    return '<div class="wb' + (isT ? ' today' : '') + '"><div class="wcol' + (v ? '' : ' zero') + '" style="height:' + Math.max(3, Math.round(v / wkMax * 100)) + '%"></div><div class="wl">' + (isT ? '今天' : d.slice(5).replace('-', '/')) + '</div></div>';
+  }).join('');
+  return '<div class="atv">' +
+    '<div class="akpis">' +
+      '<div class="akpi"><div class="k">今日活跃</div><div class="v">' + todayTot + '<span class="u">分钟</span></div><div class="d">' + (todayTot ? fmt(todayTot) : '尚无记录') + '</div></div>' +
+      '<div class="akpi"><div class="k">近 7 天活跃</div><div class="v">' + Math.round(w7 / 60 * 10) / 10 + '<span class="u">小时</span></div><div class="d">合计 ' + w7 + ' 分钟</div></div>' +
+      '<div class="akpi"><div class="k">今日应用数</div><div class="v">' + appsTop.length + '<span class="u">个</span></div><div class="d">前台活跃进程</div></div>' +
+      '<div class="akpi"><div class="k">今日站点数</div><div class="v">' + sitesTop.length + '<span class="u">个</span></div><div class="d">' + (sitesTop.length ? '最久: ' + nm(sitesTop[0][0], SITE_N) : '浏览器未匹配站') + '</div></div>' +
+    '</div>' +
+    '<div class="ax"><div class="sh"><span class="st">近 7 天活跃趋势</span></div><div class="abox"><div class="wk">' + wk + '</div></div></div>' +
+    '<div class="ax acols">' +
+      '<div><div class="sh"><span class="st">今日应用 TOP</span></div><div class="abox">' + rows(appsTop, maxA, 'a') + '</div></div>' +
+      '<div><div class="sh"><span class="st">今日站点 TOP · 浏览器内</span></div><div class="abox">' + rows(sitesTop, maxS, 's') + '</div></div>' +
+    '</div>' +
+    '<div class="hint" style="margin-top:10px">面板开启期间自动记录(ActivityWatch 式)：每 60 秒采样前台窗口, 超过 3 分钟无键鼠操作 / 锁屏 / 关机不计入。按天保留 60 天。</div>' +
+  '</div>';
+}
 /* ---------- 视图切换 ---------- */
 (function () {
   const sw = document.getElementById("statsViewSwitch");
