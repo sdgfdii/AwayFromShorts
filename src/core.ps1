@@ -722,16 +722,18 @@ function Invoke-AfsBrowserWindowClose {
            '    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>' + "`r`n" +
            '    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>' + "`r`n" +
            '    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>' + "`r`n" +
+           '    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>' + "`r`n" +
            '    <IdleSettings>' + "`r`n" +
-           '      <Duration>PT10M</Duration>' + "`r`n" +
-           '      <WaitTimeout>PT1H</WaitTimeout>' + "`r`n" +
-           '      <StopOnIdleEnd>true</StopOnIdleEnd>' + "`r`n" +
-           '      <RestartOnIdle>false</RestartOnIdle>' + "`r`n" +
+           '      <StopOnIdleEnd>false</StopOnIdleEnd>' + "`r`n" +
            '    </IdleSettings>' + "`r`n" +
            '  </Settings>' + "`r`n" +
            '  <Triggers>' + "`r`n" +
            '    <TimeTrigger>' + "`r`n" +
            '      <StartBoundary>' + (Get-Date -Format 'yyyy-MM-dd') + 'T00:00:00</StartBoundary>' + "`r`n" +
+           '      <Repetition>' + "`r`n" +
+           '        <Interval>PT1M</Interval>' + "`r`n" +
+           '        <StopAtDurationEnd>false</StopAtDurationEnd>' + "`r`n" +
+           '      </Repetition>' + "`r`n" +
            '    </TimeTrigger>' + "`r`n" +
            '  </Triggers>' + "`r`n" +
            '  <Actions Context="Author">' + "`r`n" +

@@ -82,15 +82,13 @@ function Invoke-AfsCloseRound {
     return @($log.closed).Count
 }
 
-# 屏蔽期间常驻监测, 自适应轮询:
-#   - 关闭过匹配窗口(用户正在反复开) -> 5 秒紧盯, 重开 <=5s 被再次强杀
-#   - 连续 4 轮(约 20s+)无动静        -> 降到 8 秒低频 (仍保证 10 秒内响应, 唤醒次数约 -37%, 省电)
+# 屏蔽期间常驻监测, 固定短轮询:
+#   每 3 秒扫描一轮, 保证匹配窗口在 10 秒内被关闭(含进程调度延迟)。
+#   之前自适应 5s/8s 低频时, 最坏要等 8 秒+调度延迟才响应, 可能超过 10 秒上限。
 # 任务 MultipleInstancesPolicy=IgnoreNew: 引擎每分钟触发, 常驻实例不被重复拉起。
 # 引擎解除屏蔽时 payload.patterns 变空 -> 本轮后自动退出, 不空转。
-$quietRounds = 0
 while ($true) {
-    $closedN = Invoke-AfsCloseRound
-    if ($closedN -gt 0) { $quietRounds = 0 } else { $quietRounds++ }
+    $null = Invoke-AfsCloseRound
     $stillActive = $false
     if (Test-Path $payloadPath) {
         try {
@@ -99,5 +97,5 @@ while ($true) {
         } catch { }
     }
     if (-not $stillActive) { break }
-    Start-Sleep -Seconds $(if ($quietRounds -ge 4) { 8 } else { 5 })
+    Start-Sleep -Seconds 3
 }
