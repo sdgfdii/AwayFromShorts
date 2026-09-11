@@ -17,6 +17,44 @@ $dir  = Split-Path $MyInvocation.MyCommand.Path
 $payloadPath = Join-Path $dir 'browser-close.json'
 $logPath     = Join-Path $dir 'browser-close.log'
 
+# Win32 顶层窗口枚举 (不依赖 Get-Process.MainWindowTitle —— 它对 Chromium 多进程窗口经常返回空)
+Add-Type -TypeDefinition @'
+using System;
+using System.Text;
+using System.Runtime.InteropServices;
+public static class AfsWin {
+    public delegate bool EnumProc(IntPtr hWnd, IntPtr lParam);
+    [DllImport("user32.dll")] public static extern bool EnumWindows(EnumProc cb, IntPtr lParam);
+    [DllImport("user32.dll")] public static extern int GetWindowTextW(IntPtr hWnd, StringBuilder s, int nMax);
+    [DllImport("user32.dll")] public static extern int GetWindowTextLengthW(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
+}
+'@
+
+# 枚举当前交互会话所有可见顶层窗口, 返回 (PID, Title) 列表
+function Get-AfsVisibleWindows {
+    $list = New-Object System.Collections.ArrayList
+    $cb = [AfsWin+EnumProc]{
+        param($h, $l)
+        try {
+            if ([AfsWin]::IsWindowVisible($h)) {
+                $len = [AfsWin]::GetWindowTextLengthW($h)
+                if ($len -gt 0) {
+                    $sb = New-Object System.Text.StringBuilder ($len + 1)
+                    [void][AfsWin]::GetWindowTextW($h, $sb, $sb.Capacity)
+                    $pid = 0
+                    [void][AfsWin]::GetWindowThreadProcessId($h, [ref]$pid)
+                    [void]$list.Add(@{ Pid = [int]$pid; Title = $sb.ToString() })
+                }
+            }
+        } catch { }
+        return $true
+    }
+    [void][AfsWin]::EnumWindows($cb, [IntPtr]::Zero)
+    return $list
+}
+
 function Invoke-AfsCloseRound {
     $log = @{
         time     = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
@@ -35,38 +73,45 @@ function Invoke-AfsCloseRound {
         $names = @($targets | ForEach-Object { if ($_ -eq 'edge') { 'msedge' } else { 'chrome' } } | Select-Object -Unique)
         if ($names.Count -eq 0) { $names = @('msedge', 'chrome') }
 
-        $hadWindow = @()
+        # PID -> 进程名 映射 (一次查询, 供窗口反查)
+        $pidName = @{}
         foreach ($n in $names) {
-            if (@(Get-Process -Name $n -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowTitle }).Count -gt 0) {
-                $hadWindow += $n
+            foreach ($pr in @(Get-Process -Name $n -ErrorAction SilentlyContinue)) {
+                $pidName[[int]$pr.Id] = $n
             }
         }
 
+        $hadWindow = @()
         foreach ($n in $names) {
-            foreach ($pr in @(Get-Process -Name $n -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowTitle })) {
-                $title = [string]$pr.MainWindowTitle
-                $log.seen += "$n($($pr.Id)) [$title]"
-                $match = $restartAll
-                if (-not $match) {
-                    foreach ($pat in $patterns) { if ($title -like $pat) { $match = $true; break } }
-                }
-                if ($match) {
-                    $log.matched += "$n($($pr.Id)) [$title]"
-                    try {
-                        Stop-Process -Id $pr.Id -Force -ErrorAction SilentlyContinue
-                        Start-Sleep -Milliseconds 400
-                        if (-not (Get-Process -Id $pr.Id -ErrorAction SilentlyContinue)) {
-                            $log.closed += "$n($($pr.Id)) [$title] (强制)"
-                        }
-                    } catch { }
-                }
+            if ($pidName.ContainsValue($n)) { $hadWindow += $n }
+        }
+
+        foreach ($w in @(Get-AfsVisibleWindows)) {
+            $wn = $null
+            if ($pidName.ContainsKey($w.Pid)) { $wn = $pidName[$w.Pid] }
+            if (-not $wn) { continue }
+            $title = [string]$w.Title
+            $log.seen += "$wn($($w.Pid)) [$title]"
+            $match = $restartAll
+            if (-not $match) {
+                foreach ($pat in $patterns) { if ($title -like $pat) { $match = $true; break } }
+            }
+            if ($match) {
+                $log.matched += "$wn($($w.Pid)) [$title]"
+                try {
+                    Stop-Process -Id $w.Pid -Force -ErrorAction SilentlyContinue
+                    Start-Sleep -Milliseconds 400
+                    if (-not (Get-Process -Id $w.Pid -ErrorAction SilentlyContinue)) {
+                        $log.closed += "$wn($($w.Pid)) [$title] (强制)"
+                    }
+                } catch { }
             }
         }
 
         if ($restartAll) {
             Start-Sleep -Seconds 2
             foreach ($n in $hadWindow) {
-                $any = @(Get-Process -Name $n -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowTitle })
+                $any = @(Get-AfsVisibleWindows | Where-Object { $pidName.ContainsKey($_.Pid) })
                 if (-not $any) {
                     try { Start-Process -FilePath $n -ArgumentList '--new-window'; $log.reopened = $true } catch { }
                 }
@@ -78,7 +123,6 @@ function Invoke-AfsCloseRound {
     try {
         [System.IO.File]::WriteAllText($logPath, (ConvertTo-Json $log), (New-Object System.Text.UTF8Encoding($false)))
     } catch { }
-    # 返回本轮实际关闭的窗口数(供调用方自适应轮询间隔)
     return @($log.closed).Count
 }
 
@@ -87,8 +131,18 @@ function Invoke-AfsCloseRound {
 #   之前自适应 5s/8s 低频时, 最坏要等 8 秒+调度延迟才响应, 可能超过 10 秒上限。
 # 任务 MultipleInstancesPolicy=IgnoreNew: 引擎每分钟触发, 常驻实例不被重复拉起。
 # 引擎解除屏蔽时 payload.patterns 变空 -> 本轮后自动退出, 不空转。
+$heartbeatPath = Join-Path $dir 'browser-close.heartbeat'
+$emptyRounds = 0
 while ($true) {
-    $null = Invoke-AfsCloseRound
+    # 全局兜底: 单轮任何未捕获异常都不中断常驻循环, 避免"进程静默死亡导致屏蔽失效"
+    try {
+        $null = Invoke-AfsCloseRound
+    } catch {
+        try {
+            $hb = @{ time = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss'); error = $_.Exception.Message }
+            [System.IO.File]::WriteAllText($heartbeatPath, (ConvertTo-Json $hb), (New-Object System.Text.UTF8Encoding($false)))
+        } catch { }
+    }
     $stillActive = $false
     if (Test-Path $payloadPath) {
         try {
@@ -97,5 +151,13 @@ while ($true) {
         } catch { }
     }
     if (-not $stillActive) { break }
+    # 心跳: 每次正常循环刷新时间戳, 便于诊断"进程是否存活"
+    if ($emptyRounds % 10 -eq 0) {
+        try {
+            $hb = @{ time = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss'); alive = $true }
+            [System.IO.File]::WriteAllText($heartbeatPath, (ConvertTo-Json $hb), (New-Object System.Text.UTF8Encoding($false)))
+        } catch { }
+    }
+    $emptyRounds++
     Start-Sleep -Seconds 3
 }
