@@ -119,6 +119,9 @@
     border: 1px solid var(--border); background: var(--panel2); color: var(--muted); font-size: 13px;
   }
   .chip.on { background: var(--accent2); border-color: var(--accent2); color: #fff; font-weight: 600; }
+  .chip.locked { opacity: .45; cursor: not-allowed; }
+  .chip.locked:hover { border-color: var(--border); color: var(--muted); box-shadow: none; }
+  .chip.locked.on { background: var(--accent2); border-color: var(--accent2); color: #fff; }
 
   .window-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
   .window-row input[type="time"] {
@@ -650,6 +653,7 @@
         <h3>📅 屏蔽日期</h3>
         <div class="chips" id="dayChips"></div>
         <div class="note">选择每周哪些天执行屏蔽。时间支持跨午夜,例如 23:00 → 01:00。</div>
+        <div class="red-note" id="dayLockNote" style="display:none"></div>
       </div>
       <div class="card">
         <h3>⏰ 屏蔽时间段</h3>
@@ -949,6 +953,9 @@ const PROC_PRESETS = [
   { label: "抖音桌面版", names: ["douyin"] },
 ];
 const DAY_LABELS = ["一","二","三","四","五","六","日"];
+const WD_CN = ["", "周一", "周二", "周三", "周四", "周五", "周六", "周日"];
+// 强制模式开启期间, 屏蔽星期锁定不可改 (防破戒: 改星期会让强制模式当天不生效)
+const forceLocked = () => !!(cfg && cfg.force && cfg.force.enabled);
 
 /* ================= 加载 ================= */
 async function load() {
@@ -1178,8 +1185,22 @@ setInterval(() => {
 
 function renderSchedule() {
   const days = cfg.schedule.days;
+  const locked = forceLocked();
   $("#dayChips").innerHTML = DAY_LABELS.map((l, i) =>
-    `<div class="chip ${days.includes(i + 1) ? "on" : ""}" data-day="${i + 1}">周${l}</div>`).join("");
+    `<div class="chip ${days.includes(i + 1) ? "on" : ""}${locked ? " locked" : ""}" data-day="${i + 1}" title="${locked ? "强制模式开启中, 屏蔽星期已锁定" : ""}">周${l}</div>`).join("");
+
+  // 强制模式开启期间: 显示锁定提示
+  const ln = $("#dayLockNote");
+  if (ln) {
+    if (locked) {
+      const fw = ((cfg.force || {}).weekdays || []).filter(x => x);
+      const fwTxt = (!fw.length || fw.length >= 7) ? "每天" : fw.map(d => WD_CN[d]).join("、");
+      ln.style.display = "";
+      ln.innerHTML = `🔒 <b>强制模式已开启</b>(强制星期: ${fwTxt}) — 强制模式开启期间<b>「屏蔽星期」已锁定, 无法修改</b>(防破戒: 改星期会让强制模式当天失效)。如需调整, 请先在上方「强制模式」卡片中<b>关闭强制模式</b>。`;
+    } else {
+      ln.style.display = "none";
+    }
+  }
 
   const ws = cfg.schedule.windows;
   $("#windowRows").innerHTML = (ws.length ? ws : [{ start: "19:00", end: "22:00" }]).map((w, i) =>
@@ -1202,12 +1223,13 @@ function renderForce() {
   const fWds = f.weekdays || [];
   if (f.enabled && forced) {
     fa.innerHTML =
-      `<div class="note red-note">🔒 <b>强制模式生效中(当前屏蔽时段)</b> — 强制期间<b>无法提前关闭</b>(防破戒), 也无法关闭屏蔽 / 临时解除 / 修改计划。<br>适用: <b>${wdShow(fWds)}</b> 的屏蔽时段, 星期循环长期有效(无到期日)。等当前时段结束, 或在非所选星期 / 屏蔽窗口外可手动关闭。</div>`;
+      `<div class="note red-note">🔒 <b>强制模式生效中(当前屏蔽时段)</b> — 强制期间<b>无法提前关闭</b>(防破戒), 也无法关闭屏蔽 / 临时解除 / <b>修改屏蔽星期</b>。<br>适用: <b>${wdShow(fWds)}</b> 的屏蔽时段, 星期循环长期有效(无到期日)。等当前时段结束, 或在非所选星期 / 屏蔽窗口外可手动关闭。</div>`;
     return;
   }
   if (f.enabled) {
     fa.innerHTML =
       `<div class="note">🔒 <b>强制模式已开启</b>(星期循环): <b>${wdShow(fWds)}</b> 的屏蔽时段内自动强制。<br>当前<b>不在强制时段</b>(屏蔽窗口外或非所选星期), 可正常使用; 进入强制时段后将无法关闭, 直到时段结束。要停用请点下方按钮。</div>` +
+      `<div class="note warn" style="margin-top:8px">📅 强制模式开启期间<b>「屏蔽星期」已锁定, 无法修改</b>(防破戒)。如需调整, 请先点下方按钮关闭强制模式。</div>` +
       `<button class="btn danger" id="forceOffBtn">🔓 关闭强制模式</button>`;
     const off = $("#forceOffBtn");
     if (off) off.addEventListener("click", async () => {
@@ -1853,6 +1875,10 @@ $("#scanWinBtn").addEventListener("click", async () => {
 $("#dayChips").addEventListener("click", e => {
   const chip = e.target.closest(".chip");
   if (!chip) return;
+  if (forceLocked()) {
+    toast("🔒 强制模式开启中, 屏蔽星期已锁定。请先关闭强制模式再修改。", "err");
+    return;
+  }
   const d = +chip.dataset.day;
   const days = cfg.schedule.days;
   if (days.includes(d)) cfg.schedule.days = days.filter(x => x !== d);

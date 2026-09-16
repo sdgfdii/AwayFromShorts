@@ -161,9 +161,18 @@ $handler = {
             try {
                 $o = $body | ConvertFrom-Json -ErrorAction Stop
                 $inCfg = ConvertTo-AfsHashtable $o
-                $forceNow = Test-AfsForceActive -Config (Get-AfsConfig)
+                $curCfg = Get-AfsConfig
+                $forceNow = Test-AfsForceActive -Config $curCfg
                 if ($forceNow.active -and -not [bool]$inCfg.enabled) {
                     throw "强制模式生效中 (可先关闭强制模式, 再关闭屏蔽)"
+                }
+                # 强制模式开启期间锁定「屏蔽星期」(防破戒): 改星期可让强制模式当天不生效, 绕开强制
+                if ([bool]$curCfg.force.enabled) {
+                    $oldDays = (@($curCfg.schedule.days) | Sort-Object) -join ','
+                    $newDays = (@($inCfg.schedule.days) | Sort-Object) -join ','
+                    if ($oldDays -ne $newDays) {
+                        throw "强制模式开启中, 无法更改「屏蔽星期」(防破戒)。请先在「强制模式」卡片关闭强制模式, 再修改屏蔽日期。"
+                    }
                 }
                 $newCfg = Set-AfsConfigSafe -InputConfig $inCfg
                 Send-AfsJson -Stream $stream -Status 200 -Obj @{

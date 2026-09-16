@@ -86,23 +86,47 @@ function Invoke-AfsCloseRound {
             if ($pidName.ContainsValue($n)) { $hadWindow += $n }
         }
 
+        # 双数据源取并集: 两种窗口标题读取方式各有失效场景, 互相兜底
+        #   1) EnumWindows: 覆盖 Chromium 多进程(主进程 MainWindowTitle 常空) —— 但计划任务窗口站隔离时枚举不到
+        #   2) Get-Process.MainWindowTitle: 读进程对象不依赖窗口站 —— 但 Chromium 主进程标题可能为空
+        # 用 PID 去重, 保证同一窗口只处理一次。
+        $candidates = @{}   # PID -> 标题
+
+        # 数据源 1: EnumWindows 枚举可见顶层窗口
         foreach ($w in @(Get-AfsVisibleWindows)) {
-            $wn = $null
-            if ($pidName.ContainsKey($w.Pid)) { $wn = $pidName[$w.Pid] }
+            if ($pidName.ContainsKey($w.Pid)) {
+                $key = [string]$w.Pid
+                if (-not $candidates.ContainsKey($key) -or $candidates[$key] -eq '') {
+                    $candidates[$key] = [string]$w.Title
+                }
+            }
+        }
+        # 数据源 2: Get-Process.MainWindowTitle (跨窗口站, 读进程对象)
+        foreach ($n in $names) {
+            foreach ($pr in @(Get-Process -Name $n -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowTitle })) {
+                $key = [string]$pr.Id
+                if (-not $candidates.ContainsKey($key) -or $candidates[$key] -eq '') {
+                    $candidates[$key] = [string]$pr.MainWindowTitle
+                }
+            }
+        }
+
+        foreach ($pidKey in $candidates.Keys) {
+            $title = [string]$candidates[$pidKey]
+            $wn = $pidName[[int]$pidKey]
             if (-not $wn) { continue }
-            $title = [string]$w.Title
-            $log.seen += "$wn($($w.Pid)) [$title]"
+            $log.seen += "$wn($pidKey) [$title]"
             $match = $restartAll
             if (-not $match) {
                 foreach ($pat in $patterns) { if ($title -like $pat) { $match = $true; break } }
             }
             if ($match) {
-                $log.matched += "$wn($($w.Pid)) [$title]"
+                $log.matched += "$wn($pidKey) [$title]"
                 try {
-                    Stop-Process -Id $w.Pid -Force -ErrorAction SilentlyContinue
+                    Stop-Process -Id ([int]$pidKey) -Force -ErrorAction SilentlyContinue
                     Start-Sleep -Milliseconds 400
-                    if (-not (Get-Process -Id $w.Pid -ErrorAction SilentlyContinue)) {
-                        $log.closed += "$wn($($w.Pid)) [$title] (强制)"
+                    if (-not (Get-Process -Id ([int]$pidKey) -ErrorAction SilentlyContinue)) {
+                        $log.closed += "$wn($pidKey) [$title] (强制)"
                     }
                 } catch { }
             }
@@ -111,7 +135,7 @@ function Invoke-AfsCloseRound {
         if ($restartAll) {
             Start-Sleep -Seconds 2
             foreach ($n in $hadWindow) {
-                $any = @(Get-AfsVisibleWindows | Where-Object { $pidName.ContainsKey($_.Pid) })
+                $any = @(Get-Process -Name $n -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowTitle })
                 if (-not $any) {
                     try { Start-Process -FilePath $n -ArgumentList '--new-window'; $log.reopened = $true } catch { }
                 }
