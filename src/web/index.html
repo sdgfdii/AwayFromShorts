@@ -286,6 +286,10 @@
     background:linear-gradient(90deg, rgba(255,93,93,.18), rgba(255,171,61,.1));
     border:1px solid rgba(255,93,93,.55); color:#ffd9d9; animation:statLivePulse 1.8s ease-in-out infinite; }
   @keyframes statLivePulse { 0%,100%{border-color:rgba(255,93,93,.55);box-shadow:0 0 0 0 rgba(255,93,93,.16)} 50%{border-color:rgba(255,93,93,.95);box-shadow:0 0 16px 3px rgba(255,93,93,.22)} }
+  /* 统计页刷新状态行: 让"刷新了没 / 为什么没更新"看得见 */
+  .stats-updated { margin:-6px 0 12px; font-size:12px; color:var(--muted); letter-spacing:.2px; }
+  .stats-updated.ok::before { content:"✓ "; color:#57d99a; }
+  .stats-updated.err { color:#ff9a9a; }
 
   /* ============ 视图 A · 战报 (.vb) ============ */
   .vb .hero { margin:0; border-radius:16px; padding:22px 24px; position:relative; overflow:hidden;
@@ -1083,6 +1087,7 @@
           <button class="btn" data-view="month" title="按自然月汇总应用使用时长">📆 月汇总</button>
         </div>
         <div class="view-live" id="statLive"></div>
+        <div class="stats-updated" id="statsUpdated" style="display:none"></div>
         <div id="statsViewHost"></div>
         <div class="btn-row">
           <button class="btn" id="statsRefreshBtn">🔄 刷新</button>
@@ -1193,6 +1198,7 @@ let status = null;
 let acct = null;
 let stats = null;
 let activity = null;
+let actLast = 0;        // activity 上次刷新时间; 切到「每日/周/月」视图时据此判断要不要重拉
 let dirty = false;
 let autoFail = 0;   // 自动刷新连续失败次数
 
@@ -1303,8 +1309,10 @@ async function load() {
   // 首页/状态页同时依赖 cfg(整卡配色与开关状态) 与 status, 缺一个就等下一轮, 避免渲染中途抛错中断
   if (cfg && status) { renderHome(); renderStatus(); }
   if (a.status === "fulfilled" && a.value) { acct = a.value.account; renderSync(); }
-  if (st.status === "fulfilled" && st.value) { stats = st.value.stats; renderStatsNew(); }
-  if (act.status === "fulfilled" && act.value) { activity = act.value.activity; }
+  // 先落 activity 再渲染统计: 「每日/周汇总/月汇总」读的是 activity, 顺序反了会先渲一版空数据
+  if (act.status === "fulfilled" && act.value) { activity = act.value.activity; actLast = Date.now(); }
+  if (st.status === "fulfilled" && st.value) stats = st.value.stats;
+  if (st.status === "fulfilled" || act.status === "fulfilled") safeRenderStats();
 
   const ok = !!(cfg && status);
   if (ok) dirty = false;
@@ -1353,7 +1361,7 @@ function renderAll() {
   renderBrowser();
   renderProcesses();
   renderWhitelist();
-  renderStatsNew();
+  safeRenderStats();     // 统计渲染失败只影响统计页, 不能连坐后面的 renderSync
   renderSync();
 }
 
@@ -2182,6 +2190,10 @@ function statsViewMonth() {
     statsView = b.dataset.view;
     try { localStorage.setItem("afsStatsView", statsView); } catch (err) {}
     renderStatsNew();
+    // 「每日/周/月」靠 activity; 数据超过 20 秒就顺手重拉一次, 免得切过去还是旧数字
+    if (statsNeedsActivity() && Date.now() - actLast > 20000) {
+      refreshActivity(true).then(ok => { if (ok) safeRenderStats(); });
+    }
   });
 })();
 
@@ -2273,7 +2285,7 @@ function activateTab(el) {
   }
 
   $("#panelTitle").textContent = TAB_TITLES[tab] || "";
-  if (tab === "stats") refreshStats();   // 进入统计页时拉取最新数据
+  if (tab === "stats") refreshStats(true);   // 进入统计页时拉最新数据(静默: 面板没起来时不该弹错误)
 }
 
 /* 切页入场动效: 只在这里触发(定时刷新不重播, 避免每 20s 闪一次) */
@@ -2516,7 +2528,7 @@ async function actAndRefresh(fn, okMsg) {
   try {
     await fn();
     toast(okMsg || "已生效", "ok");
-    await Promise.all([refreshStatus(), refreshStats()]);
+    await Promise.all([refreshStatus(), refreshStats(true, true)]);
   } catch (e) { toast("操作失败: " + e.message, "err"); }
 }
 $("#applyBtn").addEventListener("click", async () => actAndRefresh(async () => { await api("/api/apply", "POST", {}); }, "已应用"));
@@ -2579,14 +2591,83 @@ $("#syncLogoutBtn").addEventListener("click", async () => {
 });
 
 // 统计页
-async function refreshStats(silent) {
-  try {
-    const r = await api("/api/stats");
-    stats = r.stats;
-    renderStatsNew();
-  } catch (e) { if (!silent) toast("刷新统计失败: " + e.message, "err"); }
+// 注意: 统计页有两条数据源 —— /api/stats(破戒记录) 与 /api/activity(应用使用)。
+// 「每日 / 周汇总 / 月汇总」三个视图读的全是 activity, 只刷 stats 是刷不动的。
+function statsIsConnErr(e) {
+  const m = String((e && e.message) || e);
+  return /请求超时|网络错误|Failed to fetch|NetworkError|Load failed|HTTP 5\d\d/.test(m);
 }
-$("#statsRefreshBtn").addEventListener("click", () => refreshStats());
+function setStatsHint(txt, kind) {
+  const el = document.getElementById("statsUpdated");
+  if (!el) return;
+  el.textContent = txt || "";
+  el.className = "stats-updated" + (kind ? " " + kind : "");
+  el.style.display = txt ? "" : "none";
+}
+function statsStamp() {
+  const d = new Date(), p = n => String(n).padStart(2, "0");
+  return p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds());
+}
+// battle 视图只用破戒记录, 其余三个视图需要应用使用数据
+function statsNeedsActivity() { return statsView !== "battle"; }
+// 渲染单独兜底: 渲染异常不应该被当成"请求失败", 否则提示语会误导排查方向
+function safeRenderStats() {
+  try { renderStatsNew(); return true; }
+  catch (e) { console.error("[stats] 渲染失败", e); setStatsHint("❌ 渲染失败: " + (e && e.message ? e.message : e), "err"); return false; }
+}
+
+// 只拉应用使用数据(独立出来给"切视图"和"进统计页"用)
+async function refreshActivity(silent) {
+  try {
+    const r = await api("/api/activity");
+    activity = r.activity; actLast = Date.now();
+    return true;
+  } catch (e) {
+    if (!silent && !statsIsConnErr(e)) toast("刷新应用使用失败: " + e.message, "err");
+    return false;
+  }
+}
+let statsRetryTimer = null, statsAttempt = 0;
+async function refreshStats(silent, forceActivity) {
+  const needAct = forceActivity === true || statsNeedsActivity();
+  const res = await Promise.allSettled(needAct ? [api("/api/stats"), api("/api/activity")] : [api("/api/stats")]);
+  const st = res[0], act = res[1];
+  let err = null;
+  if (st && st.status === "fulfilled") stats = st.value.stats;
+  else err = (st && st.reason) || new Error("未知错误");
+  if (act) {
+    if (act.status === "fulfilled") { activity = act.value.activity; actLast = Date.now(); }
+    else if (!err) err = act.reason;
+  }
+  const gotSomething = (st && st.status === "fulfilled") || (act && act.status === "fulfilled");
+  if (gotSomething) safeRenderStats();
+
+  if (!err) {
+    statsAttempt = 0;
+    setStatsHint("已更新 " + statsStamp(), "ok");
+    return true;
+  }
+  if (statsIsConnErr(err)) {
+    // 面板没起来/重启中: 不弹错误刷屏, 静默退避重试
+    setStatsHint("⏳ 面板未响应, 自动重试中…（第 " + (statsAttempt + 1) + " 次）", "err");
+    statsScheduleRetry();
+  } else {
+    setStatsHint("❌ 刷新失败: " + err.message, "err");
+    if (!silent) toast("刷新统计失败: " + err.message, "err");
+  }
+  return false;
+}
+function statsScheduleRetry() {
+  if (statsRetryTimer || statsAttempt >= 5) return;
+  statsAttempt++;
+  const wait = Math.min(2000 * statsAttempt, 10000);
+  statsRetryTimer = setTimeout(() => {
+    statsRetryTimer = null;
+    refreshStats(true).then(ok => { if (!ok) statsScheduleRetry(); });
+  }, wait);
+}
+// 手动点「刷新」= 明确要最新数据, 两条数据源都拉
+$("#statsRefreshBtn").addEventListener("click", () => { statsAttempt = 0; refreshStats(false, true); });
 $("#statsClearBtn").addEventListener("click", async () => {
   if (!confirm("确定清空全部解除统计?此操作不可恢复。")) return;
   try {

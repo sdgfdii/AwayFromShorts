@@ -76,10 +76,40 @@ function ConvertTo-AfsHashtable {
     return $InputObject
 }
 
+# 运行时文件(stats/activity)由主引擎每分钟写入, 面板可能刚好读到写了一半的内容。
+# 读不到完整文本时做几次短重试, 避免"读到空文件 -> 统计凭空清零"。
+function Read-AfsTextRetry {
+    param([string]$Path, [int]$Attempts = 4, [int]$DelayMs = 60)
+    $lastErr = '未知'
+    for ($i = 0; $i -lt $Attempts; $i++) {
+        try {
+            $text = [System.IO.File]::ReadAllText($Path, [System.Text.Encoding]::UTF8)
+            if ($text -and $text.Trim().Length -gt 1) { return $text }
+            $lastErr = '文件为空(可能正在写入)'
+        } catch { $lastErr = $_.Exception.Message }
+        Start-Sleep -Milliseconds $DelayMs
+    }
+    throw "读取失败: $Path ($lastErr)"
+}
+
+# 原子写: 先落临时文件再替换, 任何时刻磁盘上都有一份完整内容
+function Write-AfsTextAtomic {
+    param([string]$Path, [string]$Text)
+    $utf8 = New-Object System.Text.UTF8Encoding($false)   # 无 BOM, 兼容 web
+    $tmp = "$Path.tmp"
+    [System.IO.File]::WriteAllText($tmp, $Text, $utf8)
+    if ([System.IO.File]::Exists($Path)) {
+        try { [System.IO.File]::Replace($tmp, $Path, $null) }
+        catch { Move-Item -LiteralPath $tmp -Destination $Path -Force }
+    } else {
+        Move-Item -LiteralPath $tmp -Destination $Path -Force
+    }
+}
+
 function Read-AfsJson {
     param([string]$Path)
     if (-not (Test-Path $Path)) { throw "配置文件不存在: $Path" }
-    $text = [System.IO.File]::ReadAllText($Path, [System.Text.Encoding]::UTF8)
+    $text = Read-AfsTextRetry -Path $Path
     $obj  = ConvertFrom-Json $text -ErrorAction Stop
     ConvertTo-AfsHashtable $obj
 }
@@ -87,8 +117,7 @@ function Read-AfsJson {
 function Write-AfsJson {
     param([string]$Path, $Object)
     $json = ConvertTo-Json $Object -Depth 12
-    $utf8 = New-Object System.Text.UTF8Encoding($false)   # 无 BOM, 兼容 web
-    [System.IO.File]::WriteAllText($Path, $json, $utf8)
+    Write-AfsTextAtomic -Path $Path -Text $json
 }
 
 function Get-AfsConfig {
@@ -455,15 +484,21 @@ function Get-AfsStatsPath { (Join-Path (Split-Path (Get-AfsConfigPath)) $script:
 function Read-AfsStats {
     $p = Get-AfsStatsPath
     if (Test-Path $p) {
-        try { return ConvertTo-AfsHashtable (ConvertFrom-Json ([System.IO.File]::ReadAllText($p, [System.Text.Encoding]::UTF8))) } catch { }
+        try {
+            $obj = ConvertTo-AfsHashtable (ConvertFrom-Json (Read-AfsTextRetry -Path $p) -ErrorAction Stop)
+            $script:afsStatsCache = $obj
+            return $obj
+        } catch { }
     }
+    # 文件不存在/暂时读不动 -> 用本进程上次成功读到的内容, 而不是让统计凭空清零
+    if ($script:afsStatsCache) { return $script:afsStatsCache }
     @{ open = $null; events = @() }
 }
 
 function Save-AfsStats {
     param($Stats)
-    $utf8 = New-Object System.Text.UTF8Encoding($false)
-    [System.IO.File]::WriteAllText((Get-AfsStatsPath), (ConvertTo-Json $Stats -Depth 6), $utf8)
+    Write-AfsTextAtomic -Path (Get-AfsStatsPath) -Text (ConvertTo-Json $Stats -Depth 6)
+    $script:afsStatsCache = $Stats
 }
 
 function Format-AfsMinTime { param([datetime]$T) $T.ToString('yyyy-MM-dd HH:mm') }
@@ -533,15 +568,20 @@ function Get-AfsActivityPath { (Join-Path (Split-Path (Get-AfsConfigPath)) $scri
 function Read-AfsActivity {
     $p = Get-AfsActivityPath
     if (Test-Path $p) {
-        try { return ConvertTo-AfsHashtable (ConvertFrom-Json ([System.IO.File]::ReadAllText($p, [System.Text.Encoding]::UTF8))) } catch { }
+        try {
+            $obj = ConvertTo-AfsHashtable (ConvertFrom-Json (Read-AfsTextRetry -Path $p) -ErrorAction Stop)
+            $script:afsActivityCache = $obj
+            return $obj
+        } catch { }
     }
+    if ($script:afsActivityCache) { return $script:afsActivityCache }
     @{ version = 1; days = @{} }
 }
 
 function Save-AfsActivity {
     param($Activity)
-    $utf8 = New-Object System.Text.UTF8Encoding($false)
-    [System.IO.File]::WriteAllText((Get-AfsActivityPath), (ConvertTo-Json $Activity -Depth 12), $utf8)
+    Write-AfsTextAtomic -Path (Get-AfsActivityPath) -Text (ConvertTo-Json $Activity -Depth 12)
+    $script:afsActivityCache = $Activity
 }
 
 # Win32: 前台窗口 / 全局输入空闲检测 (需交互会话)

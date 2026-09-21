@@ -38,7 +38,16 @@ const markers = [
   ["后台暂停刷新", /if \(autoBusy \|\| document\.hidden\) return;/],
   ["切回前台补刷", /visibilitychange/],
   ["静默刷新 refreshStatus(silent)", /async function refreshStatus\(silent\)/],
-  ["静默刷新 refreshStats(silent)", /async function refreshStats\(silent\)/],
+  ["静默刷新 refreshStats(silent)", /async function refreshStats\(silent, forceActivity\)/],
+  // 统计页: activity(应用使用) 必须跟着刷新, 否则「每日/周/月」三个视图永远停在首屏数据
+  ["统计: 刷新同时拉 activity", /async function refreshActivity\(silent\)/],
+  ["统计: 刷新统计并发拉两条数据源", /Promise\.allSettled\(needAct \? \[api\("\/api\/stats"\), api\("\/api\/activity"\)\]/],
+  ["统计: 渲染与请求失败分离", /function safeRenderStats\(\)/],
+  ["统计: 界面显示刷新时间", /已更新 " \+ statsStamp\(\)/],
+  ["统计: 连接类失败静默退避重试", /function statsScheduleRetry\(\)/],
+  ["统计: 刷新状态行存在", /id="statsUpdated"/],
+  ["统计: 视图切换补拉 activity", /if \(statsNeedsActivity\(\) && Date\.now\(\) - actLast > 20000\)/],
+  ["统计: 首屏先落 activity 再渲染", /activity = act\.value\.activity; actLast = Date\.now\(\);\s*\}\s*if \(st\.status === "fulfilled" && st\.value\) stats = st\.value\.stats;/],
   ["断线提示", /面板无响应/],
   ["减少动效降级", /@media \(prefers-reduced-motion: reduce\)/],
   ["侧边栏 <nav> 语义", /<nav class="sidebar" aria-label="主导航">/],
@@ -102,6 +111,13 @@ try {
     ["后端: 用户信息缓存落盘", /function Save-AfsAccountCache/, core],
     ["后端: 缓存缺失时限时补拉(6s)", /TimeoutSec 6/, core],
     ["后端: 登录成功写缓存", /Save-AfsAccountCache \$u/, ui],
+    // 运行时文件(stats/activity)由主引擎高频写入, 非原子写会让面板读到半截 JSON
+    ["后端: 运行时文件原子写", /function Write-AfsTextAtomic/, core],
+    ["后端: 读文件短重试", /function Read-AfsTextRetry/, core],
+    ["后端: stats 读取走重试+进程内缓存", /Read-AfsTextRetry -Path \$p[\s\S]{0,200}afsStatsCache/, core],
+    ["后端: activity 读取走重试+进程内缓存", /Read-AfsTextRetry -Path \$p[\s\S]{0,200}afsActivityCache/, core],
+    ["后端: stats 落盘用原子写", /Write-AfsTextAtomic -Path \(Get-AfsStatsPath\)/, core],
+    ["后端: activity 落盘用原子写", /Write-AfsTextAtomic -Path \(Get-AfsActivityPath\)/, core],
   ];
   backend.forEach(([name, re, src]) => rep(name, re.test(src)));
 } catch (e) { rep("读取后端脚本", false, "- " + e.message); }
