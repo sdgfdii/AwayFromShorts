@@ -47,11 +47,14 @@
   }
   .brand .name { font-weight: 700; font-size: 15px; }
   .brand .ver { font-size: 11px; color: var(--muted); }
+  .nav-list { display: flex; flex-direction: column; }
   .nav-item {
     display: flex; align-items: center; gap: 10px;
     padding: 9px 12px; margin: 2px 0; border-radius: 9px;
     color: var(--muted); cursor: pointer; user-select: none;
     border: 1px solid transparent;
+    /* nav-item 是 <button>: 复位原生按钮样式, 保持原视觉 */
+    width: 100%; background: transparent; font: inherit; text-align: left;
   }
   .nav-item:hover { background: var(--panel2); color: var(--text); }
   .nav-item.active { background: var(--panel2); color: var(--accent); border-color: var(--border); font-weight: 600; }
@@ -260,7 +263,8 @@
     .app { flex-direction: column; height: auto; overflow: visible; }
     .sidebar { width: 100%; border-right: none; border-bottom: 1px solid var(--border); display: flex; overflow-x: auto; overflow-y: visible; padding: 10px; height: auto; }
     .brand { display: none; }
-    .nav-item { white-space: nowrap; }
+    .nav-list { flex-direction: row; }
+    .nav-item { white-space: nowrap; width: auto; }
     .status-grid { grid-template-columns: 1fr; }
     .stat-hero { flex-direction: column; }
     .hero-metrics { grid-template-columns: repeat(3, 1fr); }
@@ -545,11 +549,26 @@
   /* 今日柱脉冲强调 */
   @keyframes todayPulse { 0%,100% { filter: brightness(1); } 50% { filter: brightness(1.35); } }
   .stat-anim .vb .bar.today .col, .stat-anim .atv .wk .wb.today .wcol { animation: barGrow .7s cubic-bezier(.22,.9,.35,1), todayPulse 2s ease-in-out 1s infinite; }
+
+  /* ---------- 键盘可达性: 可见焦点环 ---------- */
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .nav-item:focus-visible { outline-offset: -2px; }
+  .chip:focus-visible { outline-offset: 2px; }
+
+  /* ---------- 尊重系统「减少动态效果」设置 ---------- */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: .001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: .001ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
 </style>
 </head>
 <body>
 <div class="app">
-  <aside class="sidebar">
+  <nav class="sidebar" aria-label="主导航">
     <div class="brand">
       <div class="logo">A</div>
       <div>
@@ -557,14 +576,16 @@
         <div class="ver">v<span id="verTag">-</span></div>
       </div>
     </div>
-    <div class="nav-item active" data-tab="status"><span class="dot"></span>状态 / 屏蔽计划</div>
-    <div class="nav-item" data-tab="sites"><span class="dot"></span>网站屏蔽</div>
-    <div class="nav-item" data-tab="processes"><span class="dot"></span>进程屏蔽</div>
-    <div class="nav-item" data-tab="whitelist"><span class="dot"></span>白名单</div>
-    <div class="nav-item" data-tab="stats"><span class="dot"></span>统计</div>
-    <div class="nav-item" data-tab="sync"><span class="dot"></span>账号 / 同步</div>
-    <div class="nav-item" data-tab="about"><span class="dot"></span>关于 / 卸载</div>
-  </aside>
+    <div class="nav-list" role="tablist" aria-orientation="vertical" aria-label="功能页面">
+      <button type="button" class="nav-item active" data-tab="status" role="tab" aria-selected="true" aria-controls="panel-status" tabindex="0"><span class="dot" aria-hidden="true"></span>状态 / 屏蔽计划</button>
+      <button type="button" class="nav-item" data-tab="sites" role="tab" aria-selected="false" aria-controls="panel-sites" tabindex="-1"><span class="dot" aria-hidden="true"></span>网站屏蔽</button>
+      <button type="button" class="nav-item" data-tab="processes" role="tab" aria-selected="false" aria-controls="panel-processes" tabindex="-1"><span class="dot" aria-hidden="true"></span>进程屏蔽</button>
+      <button type="button" class="nav-item" data-tab="whitelist" role="tab" aria-selected="false" aria-controls="panel-whitelist" tabindex="-1"><span class="dot" aria-hidden="true"></span>白名单</button>
+      <button type="button" class="nav-item" data-tab="stats" role="tab" aria-selected="false" aria-controls="panel-stats" tabindex="-1"><span class="dot" aria-hidden="true"></span>统计</button>
+      <button type="button" class="nav-item" data-tab="sync" role="tab" aria-selected="false" aria-controls="panel-sync" tabindex="-1"><span class="dot" aria-hidden="true"></span>账号 / 同步</button>
+      <button type="button" class="nav-item" data-tab="about" role="tab" aria-selected="false" aria-controls="panel-about" tabindex="-1"><span class="dot" aria-hidden="true"></span>关于 / 卸载</button>
+    </div>
+  </nav>
 
   <main class="main">
     <div class="topbar">
@@ -898,7 +919,7 @@
   </main>
 </div>
 
-<div class="toast" id="toast"></div>
+<div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
 <script>
 "use strict";
@@ -909,6 +930,7 @@ let acct = null;
 let stats = null;
 let activity = null;
 let dirty = false;
+let autoFail = 0;   // 自动刷新连续失败次数
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -1853,16 +1875,42 @@ function renderList(sel, arr, kind) {
 
 /* ================= 事件 ================= */
 
-// Tab 切换
-document.querySelectorAll(".nav-item").forEach(el => {
-  el.addEventListener("click", () => {
-    document.querySelectorAll(".nav-item").forEach(x => x.classList.remove("active"));
-    document.querySelectorAll(".panel").forEach(x => x.classList.remove("active"));
-    el.classList.add("active");
-    $("#panel-" + el.dataset.tab).classList.add("active");
-    const titles = { status:"状态 / 屏蔽计划", sites:"网站屏蔽", processes:"进程屏蔽", whitelist:"白名单", stats:"统计", sync:"账号 / 同步", about:"关于 / 卸载" };
-    $("#panelTitle").textContent = titles[el.dataset.tab];
-    if (el.dataset.tab === "stats") refreshStats();   // 进入统计页时拉取最新数据
+// Tab 切换(键盘可达: 方向键/Home/End 切换, roving tabindex)
+const TAB_TITLES = { status:"状态 / 屏蔽计划", sites:"网站屏蔽", processes:"进程屏蔽", whitelist:"白名单", stats:"统计", sync:"账号 / 同步", about:"关于 / 卸载" };
+const navItems = () => Array.from(document.querySelectorAll(".nav-item"));
+
+// 补齐 tab / tabpanel 语义配对(读屏可用)
+document.querySelectorAll(".nav-item").forEach(el => { if (!el.id) el.id = "tab-" + el.dataset.tab; });
+document.querySelectorAll(".panel").forEach(p => {
+  p.setAttribute("role", "tabpanel");
+  p.setAttribute("aria-labelledby", "tab-" + p.id.replace(/^panel-/, ""));
+});
+
+function activateTab(el) {
+  navItems().forEach(x => {
+    const on = (x === el);
+    x.classList.toggle("active", on);
+    x.setAttribute("aria-selected", on ? "true" : "false");
+    x.tabIndex = on ? 0 : -1;      // roving tabindex: Tab 键只停在当前页, 方向键切换
+  });
+  document.querySelectorAll(".panel").forEach(x => x.classList.remove("active"));
+  const panel = $("#panel-" + el.dataset.tab);
+  if (panel) panel.classList.add("active");
+  $("#panelTitle").textContent = TAB_TITLES[el.dataset.tab] || "";
+  if (el.dataset.tab === "stats") refreshStats();   // 进入统计页时拉取最新数据
+}
+
+navItems().forEach(el => {
+  el.addEventListener("click", () => activateTab(el));
+  el.addEventListener("keydown", e => {
+    const items = navItems();
+    const i = items.indexOf(el);
+    let next = null;
+    if (e.key === "ArrowDown" || e.key === "ArrowRight") next = items[(i + 1) % items.length];
+    else if (e.key === "ArrowUp" || e.key === "ArrowLeft") next = items[(i - 1 + items.length) % items.length];
+    else if (e.key === "Home") next = items[0];
+    else if (e.key === "End") next = items[items.length - 1];
+    if (next) { e.preventDefault(); next.focus(); activateTab(next); }
   });
 });
 
@@ -2022,9 +2070,43 @@ $("#saveBtn").addEventListener("click", async () => {
 });
 
 // 状态操作
-async function refreshStatus() {
-  try { status = await api("/api/status"); renderTop(); renderHome(); renderStatus(); } catch (e) { toast("刷新状态失败: " + e.message, "err"); }
+// silent=true 时不弹 toast(供 20s 自动刷新使用, 避免反复弹窗)
+async function refreshStatus(silent) {
+  try {
+    status = await api("/api/status");
+    autoFail = 0;
+    renderTop(); renderHome(); renderStatus();
+    return true;
+  } catch (e) {
+    if (silent) {
+      if (++autoFail >= 2) { const p = $("#topPill"); p.textContent = "🔌 面板无响应"; p.className = "pill err"; }
+    } else { toast("刷新状态失败: " + e.message, "err"); }
+    return false;
+  }
 }
+
+/* ---------- 自动刷新: 每 20s 同步一次状态 ---------- */
+/* 只刷新 /api/status(以及停在统计页时的 /api/stats), 不触碰表单里的待保存内容。 */
+const AUTO_REFRESH_MS = 20000;
+let autoBusy = false;
+let autoLast = Date.now();
+
+async function autoRefresh() {
+  if (autoBusy || document.hidden) return;      // 正在刷新 / 页面在后台 → 跳过
+  if (!status || !cfg) return;                  // 首屏尚未加载完成
+  autoBusy = true;
+  try {
+    await refreshStatus(true);
+    autoLast = Date.now();
+    if ($("#panel-stats") && $("#panel-stats").classList.contains("active")) await refreshStats(true);
+  } finally { autoBusy = false; }
+}
+setInterval(autoRefresh, AUTO_REFRESH_MS);
+// 从后台切回前台时, 若距上次刷新超过一个周期就立即补一次
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && Date.now() - autoLast > AUTO_REFRESH_MS) autoRefresh();
+});
+
 async function actAndRefresh(fn, okMsg) {
   try {
     await fn();
@@ -2092,14 +2174,14 @@ $("#syncLogoutBtn").addEventListener("click", async () => {
 });
 
 // 统计页
-async function refreshStats() {
+async function refreshStats(silent) {
   try {
     const r = await api("/api/stats");
     stats = r.stats;
     renderStatsNew();
-  } catch (e) { toast("刷新统计失败: " + e.message, "err"); }
+  } catch (e) { if (!silent) toast("刷新统计失败: " + e.message, "err"); }
 }
-$("#statsRefreshBtn").addEventListener("click", refreshStats);
+$("#statsRefreshBtn").addEventListener("click", () => refreshStats());
 $("#statsClearBtn").addEventListener("click", async () => {
   if (!confirm("确定清空全部解除统计?此操作不可恢复。")) return;
   try {
