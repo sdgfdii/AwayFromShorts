@@ -58,6 +58,20 @@ const markers = [
   ["状态胶囊可点击重连", /topPillEl\.addEventListener\("click"/],
   ["渲染前校验核心数据", /if \(cfg && status\) \{ renderHome\(\); renderStatus\(\); \}/],
   ["连接中提示", /正在连接面板/],
+  // 视觉强化: 噪波 / 悬停高光 / 阴影 / 动效
+  ["噪波: 内联 SVG 颗粒", /--noise: url\("data:image\/svg\+xml/],
+  ["噪波: 全屏混合层", /mix-blend-mode: soft-light/],
+  ["噪波: 第二层粗颗粒", /--noise-coarse/],
+  ["悬停高光: 鼠标跟随变量", /--mx: 50%; --my: 0%;/],
+  ["悬停高光: rAF 节流", /requestAnimationFrame\(\(\) =>/],
+  ["悬停高光: 光斑伪元素", /radial-gradient\(240px circle at var\(--mx\) var\(--my\)/],
+  ["阴影层级令牌 --sh-3", /--sh-3:/],
+  ["阴影: 卡片悬停加深", /\.card:hover \{ border-color: rgba\(79,140,255,\.42\)/],
+  ["动效: 切页入场 playPanelEnter", /function playPanelEnter/],
+  ["动效: 入场用 backwards(不挡 hover)", /riseIn \.44s cubic-bezier\(\.22,\.9,\.35,1\) backwards/],
+  ["动效: 列表插入 rowIn", /@keyframes rowIn/],
+  ["动效: 柱条数值过渡", /\.bar-fill, \.vb \.bar \.col/],
+  ["减少动效降级保留", /@media \(prefers-reduced-motion: reduce\)/],
 ];
 markers.forEach(([name, re]) => rep(name, re.test(html)));
 

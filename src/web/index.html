@@ -550,6 +550,161 @@
   @keyframes todayPulse { 0%,100% { filter: brightness(1); } 50% { filter: brightness(1.35); } }
   .stat-anim .vb .bar.today .col, .stat-anim .atv .wk .wb.today .wcol { animation: barGrow .7s cubic-bezier(.22,.9,.35,1), todayPulse 2s ease-in-out 1s infinite; }
 
+  /* ============================================================
+     视觉强化 · 噪波 / 悬停高光 / 阴影层级 / 动效
+     ------------------------------------------------------------
+     · 一律只用 transform / opacity / filter, 不触发重排
+     · 全局「减少动态效果」媒体查询会把下面的动画压到瞬时
+     ============================================================ */
+
+  /* ---------- 1. 噪波(胶片颗粒) ---------- */
+  /* 内联 SVG feTurbulence 生成的颗粒图, 零依赖、无需图片文件 */
+  :root {
+    --noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E");
+    /* 第二层: 更粗的颗粒, 叠出深浅不匀的"底噪" */
+    --noise-coarse: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='420' height='420'%3E%3Cfilter id='c'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.32' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='420' height='420' filter='url(%23c)'/%3E%3C/svg%3E");
+    /* 阴影层级: 1 贴合 / 2 卡片 / 3 悬停浮起 / 4 浮层 */
+    --sh-1: 0 1px 2px rgba(0,0,0,.30), 0 1px 1px rgba(0,0,0,.18);
+    --sh-2: 0 4px 14px rgba(0,0,0,.30), 0 1px 2px rgba(0,0,0,.24);
+    --sh-3: 0 12px 32px rgba(0,0,0,.42), 0 2px 6px rgba(0,0,0,.30);
+    --sh-4: 0 22px 60px rgba(0,0,0,.50), 0 3px 10px rgba(0,0,0,.34);
+    --glow: 0 8px 30px rgba(79,140,255,.22);
+    --glow-red: 0 8px 30px rgba(255,93,93,.26);
+    --glow-green: 0 8px 30px rgba(52,199,123,.24);
+    --hi: inset 0 1px 0 rgba(255,255,255,.055);   /* 顶部内高光, 塑料/玻璃质感 */
+  }
+  /* 全屏颗粒层(纯装饰, 不吃事件) —— 用两层不同粒径的噪波叠出"胶片感", 不覆盖任何已有背景 */
+  body::after {
+    content: ""; position: fixed; inset: 0; z-index: 9999; pointer-events: none;
+    background-image: var(--noise); background-size: 200px 200px;
+    opacity: .055; mix-blend-mode: soft-light;
+  }
+  body::before {
+    content: ""; position: fixed; inset: 0; z-index: 9998; pointer-events: none;
+    background-image: var(--noise-coarse); background-size: 420px 420px;
+    opacity: .035; mix-blend-mode: overlay;
+  }
+
+  /* ---------- 2. 悬停高光(鼠标跟随光斑) ---------- */
+  .card, .home-kpi, .home-hero, .page-hero, .preset, .vcard,
+  .status-cell, .hero-metric, .dblock {
+    --mx: 50%; --my: 0%; position: relative;
+  }
+  .card::before, .home-kpi::before, .home-hero::before, .page-hero::before,
+  .preset::before, .vcard::before, .status-cell::before, .hero-metric::before, .dblock::before {
+    content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+    background: radial-gradient(240px circle at var(--mx) var(--my), rgba(79,140,255,.14), rgba(79,140,255,.04) 42%, transparent 68%);
+    opacity: 0; transition: opacity .28s ease; z-index: 0;
+  }
+  .card:hover::before, .home-kpi:hover::before, .home-hero:hover::before, .page-hero:hover::before,
+  .preset:hover::before, .vcard:hover::before, .status-cell:hover::before, .hero-metric:hover::before, .dblock:hover::before { opacity: 1; }
+  /* 内容压在光斑之上 */
+  .card > *, .home-kpi > *, .preset > *, .vcard > *, .status-cell > *,
+  .hero-metric > *, .dblock > *, .home-hero > *, .page-hero > * { position: relative; z-index: 1; }
+
+  /* 行级悬停高亮: 左侧亮条 + 轻微右移 */
+  .list-item, .ev-row, .bar-row, .atv .arow, .vb .mrow { position: relative; transition: background .16s, border-color .16s, transform .16s; }
+  .list-item::before, .ev-row::before, .bar-row::before,
+  .atv .arow::before, .vb .mrow::before {
+    content: ""; position: absolute; left: 0; top: 50%; transform: translateY(-50%) scaleY(0);
+    width: 2px; height: 62%; border-radius: 2px; background: linear-gradient(var(--accent), #7b5cff);
+    opacity: 0; transition: transform .18s ease, opacity .18s ease; pointer-events: none;
+  }
+  .list-item:hover::before, .ev-row:hover::before, .bar-row:hover::before,
+  .atv .arow:hover::before, .vb .mrow:hover::before { transform: translateY(-50%) scaleY(1); opacity: 1; }
+  .list-item:hover { border-color: rgba(79,140,255,.45); background: linear-gradient(90deg, rgba(79,140,255,.07), var(--panel2)); transform: translateX(3px); }
+  .ev-row:hover, .bar-row:hover, .vb .mrow:hover { background: rgba(79,140,255,.05); }
+  .atv .arow:hover { background: linear-gradient(90deg, rgba(79,140,255,.09), var(--panel2)); }
+
+  /* 侧边栏悬停高亮 */
+  .nav-item::before {
+    content: ""; position: absolute; left: -10px; top: 50%; width: 3px; height: 20px; border-radius: 0 3px 3px 0;
+    background: linear-gradient(var(--accent), #7b5cff); box-shadow: 0 0 10px rgba(79,140,255,.7);
+    opacity: 0; transform: translateY(-50%) scaleY(.3); transition: transform .2s cubic-bezier(.34,1.56,.64,1), opacity .2s;
+  }
+  .nav-item:hover::before, .nav-item.active::before { opacity: 1; transform: translateY(-50%) scaleY(1); }
+  .nav-item:hover { background: linear-gradient(90deg, rgba(79,140,255,.10), transparent); color: var(--text); }
+  .nav-item:hover .dot { transform: scale(1.5); }
+  .nav-item .dot { transition: transform .2s cubic-bezier(.34,1.56,.64,1); }
+  .brand .logo { transition: transform .3s cubic-bezier(.34,1.56,.64,1), box-shadow .3s; }
+  .brand .logo:hover { transform: rotate(-8deg) scale(1.08); box-shadow: 0 6px 22px rgba(79,140,255,.55); }
+
+  /* ---------- 3. 阴影与浮起层级 ---------- */
+  .sidebar { box-shadow: 10px 0 30px rgba(0,0,0,.38); position: relative; z-index: 6; }
+  .card { box-shadow: var(--sh-2), var(--hi); transition: border-color .18s, box-shadow .25s, transform .25s; }
+  .card:hover { border-color: rgba(79,140,255,.42); box-shadow: var(--sh-3), var(--hi), var(--glow); }
+  .home-hero { box-shadow: var(--sh-4), var(--hi), var(--glow); }
+  .home-hero.blocking { box-shadow: var(--sh-4), var(--hi), var(--glow-red); }
+  .home-hero.off { box-shadow: var(--sh-3), var(--hi); }
+  .page-hero { box-shadow: var(--sh-3), var(--hi), var(--glow); }
+  .home-kpi, .preset, .status-cell, .hero-metric, .vcard, .list-item { box-shadow: var(--sh-1); }
+  .home-kpi:hover, .hero-metric:hover, .vcard:hover { box-shadow: var(--sh-3), var(--glow); }
+  .home-kpi:hover { transform: translateY(-3px); }
+  .status-cell:hover { box-shadow: var(--sh-2); transform: translateY(-1px); }
+  .preset:hover { box-shadow: var(--sh-3), var(--glow); transform: translateY(-3px); }
+  .status-cell, .hero-metric, .vcard, .list-item, .preset { transition: box-shadow .25s, border-color .18s, transform .25s; }
+  .list-item:hover { box-shadow: var(--sh-2); }
+  .btn { box-shadow: var(--sh-1); transition: transform .16s, box-shadow .2s, background .2s, border-color .2s, filter .2s; }
+  .btn:hover { transform: translateY(-1px); box-shadow: var(--sh-2); }
+  .btn:active { transform: translateY(1px) scale(.985); box-shadow: var(--sh-1); }
+  .btn.primary { box-shadow: var(--sh-2), var(--glow); }
+  .btn.primary:hover { box-shadow: var(--sh-3), 0 10px 34px rgba(47,111,224,.45); }
+  .btn.green:hover { box-shadow: var(--sh-2), var(--glow-green); }
+  .btn.red:hover, button.btn.danger:hover { box-shadow: var(--sh-2), var(--glow-red); }
+  .pill { box-shadow: var(--sh-1); }
+  .pill.on { box-shadow: var(--sh-1), 0 0 16px rgba(52,199,123,.22); }
+  .pill.err { box-shadow: var(--sh-1), 0 0 16px rgba(255,93,93,.22); }
+  .toast { box-shadow: var(--sh-4); }
+  .chip { box-shadow: var(--sh-1); }
+  .chip:hover { box-shadow: var(--sh-2); transform: translateY(-1px); }
+  .chip.on { box-shadow: var(--sh-2), var(--glow); }
+  :focus-visible { box-shadow: 0 0 0 4px rgba(79,140,255,.20); }
+
+  /* ---------- 4. 动效 ---------- */
+  /* 4.1 切页入场: 直接子块依次浮起(只在切页时由 JS 加 .enter, 定时刷新不会重播) */
+  /* 注意用 backwards 而非 both: forwards 填充会盖掉 hover 的 transform */
+  @keyframes riseIn { from { opacity: 0; transform: translateY(16px) scale(.992); } to { opacity: 1; transform: none; } }
+  .panel.enter:not(#panel-stats) > * { animation: riseIn .44s cubic-bezier(.22,.9,.35,1) backwards; }
+  .panel.enter:not(#panel-stats) > *:nth-child(1) { animation-delay: 0ms; }
+  .panel.enter:not(#panel-stats) > *:nth-child(2) { animation-delay: 50ms; }
+  .panel.enter:not(#panel-stats) > *:nth-child(3) { animation-delay: 100ms; }
+  .panel.enter:not(#panel-stats) > *:nth-child(4) { animation-delay: 145ms; }
+  .panel.enter:not(#panel-stats) > *:nth-child(5) { animation-delay: 190ms; }
+  .panel.enter:not(#panel-stats) > *:nth-child(n+6) { animation-delay: 230ms; }
+  /* 卡片标题竖条随入场淡入放大 */
+  @keyframes markIn { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+  .panel.enter .card h3::before { animation: markIn .35s cubic-bezier(.34,1.56,.64,1) both; }
+
+  /* 4.2 新增列表项: 插入即播(元素新建才会跑, 刷新不会重播) */
+  @keyframes rowIn { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: none; } }
+  .list-item { animation: rowIn .3s cubic-bezier(.22,.9,.35,1) backwards; }
+
+  /* 4.3 选中/切换的弹性反馈(类名一变就播) */
+  @keyframes chipPop { 0% { transform: scale(.9); } 55% { transform: scale(1.06); } 100% { transform: scale(1); } }
+  .chip.on { animation: chipPop .26s cubic-bezier(.34,1.56,.64,1); }
+  @keyframes knobPop { 0% { transform: translateX(19px) scale(.8); } 60% { transform: translateX(19px) scale(1.12); } 100% { transform: translateX(19px) scale(1); } }
+  .switch input:checked + .slider::before { animation: knobPop .28s cubic-bezier(.34,1.56,.64,1); }
+  .slider { transition: background .22s, box-shadow .22s; }
+  .slider:hover { box-shadow: 0 0 0 4px rgba(79,140,255,.12); }
+  @keyframes pillIn { from { transform: scale(.94); opacity: .55; } to { transform: scale(1); opacity: 1; } }
+  .pill.on, .pill.err { animation: pillIn .3s cubic-bezier(.34,1.56,.64,1); }
+  .toast { transition: transform .3s cubic-bezier(.34,1.56,.64,1), opacity .3s; }
+
+  /* 4.4 呼吸/流动: 让静止的大色块有生命 */
+  @keyframes breathe { 0%,100% { opacity: .5; transform: translate(0,0) scale(1); } 50% { opacity: .8; transform: translate(-14px, 10px) scale(1.08); } }
+  .home-hero::after { animation: breathe 9s ease-in-out infinite; }
+  .vb .hero .glow, .hero-main::after { animation: breathe 11s ease-in-out infinite; }
+  @keyframes logoSheen { 0% { background-position: 0% 50%; } 100% { background-position: 200% 50%; } }
+  .brand .logo { background-size: 200% 200%; animation: logoSheen 6s linear infinite; }
+  @keyframes livePulse { 0%,100% { opacity: 1; } 50% { opacity: .55; } }
+  .pill.on::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+    background: var(--green); margin-right: 6px; vertical-align: 1px; animation: livePulse 2.2s ease-in-out infinite; }
+
+  /* 4.5 柱状/进度条: 更顺滑的数值过渡 */
+  .bar-fill, .vb .bar .col, .atv .at i, .vb .mrow .mt i, .atv .wk .wcol { transition: width .6s cubic-bezier(.22,.9,.35,1), height .6s cubic-bezier(.22,.9,.35,1), background .3s; }
+  .bar-track:hover .bar-fill { filter: brightness(1.15) saturate(1.1); }
+  .home-kpi .iv, .hero-metric .v, .akpi .v { transition: color .25s; }
+
   /* ---------- 键盘可达性: 可见焦点环 ---------- */
   :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .nav-item:focus-visible { outline-offset: -2px; }
@@ -1058,7 +1213,7 @@ function bootRetry() {
   bootTimer = setTimeout(async () => {
     bootTimer = null;
     const r = await load();
-    if (r.ok) { bootAttempt = 0; }
+    if (r.ok) { bootAttempt = 0; playPanelEnter($(".panel.active")); }
     else { setPill("🔌 面板未就绪 · 自动重试中(" + bootAttempt + ")", "err"); bootRetry(); }
   }, wait);
 }
@@ -1950,9 +2105,17 @@ function activateTab(el) {
   });
   document.querySelectorAll(".panel").forEach(x => x.classList.remove("active"));
   const panel = $("#panel-" + el.dataset.tab);
-  if (panel) panel.classList.add("active");
+  if (panel) { panel.classList.add("active"); playPanelEnter(panel); }
   $("#panelTitle").textContent = TAB_TITLES[el.dataset.tab] || "";
   if (el.dataset.tab === "stats") refreshStats();   // 进入统计页时拉取最新数据
+}
+
+/* 切页入场动效: 只在这里触发(定时刷新不重播, 避免每 20s 闪一次) */
+function playPanelEnter(panel) {
+  if (!panel) return;
+  panel.classList.remove("enter");
+  void panel.offsetWidth;          // 强制重排, 让动画能重播
+  panel.classList.add("enter");
 }
 
 navItems().forEach(el => {
@@ -1968,6 +2131,26 @@ navItems().forEach(el => {
     if (next) { e.preventDefault(); next.focus(); activateTab(next); }
   });
 });
+
+/* ---------- 鼠标跟随高光: 只写 CSS 变量, rAF 节流, 不触发重排 ---------- */
+(() => {
+  const SEL = ".card,.home-kpi,.home-hero,.page-hero,.preset,.vcard,.status-cell,.hero-metric,.dblock";
+  let raf = 0, pending = null;
+  document.addEventListener("pointermove", e => {
+    if (e.pointerType && e.pointerType !== "mouse") return;   // 触摸/手写笔不做光斑
+    const el = e.target && e.target.closest ? e.target.closest(SEL) : null;
+    if (!el) { pending = null; return; }
+    pending = { el, x: e.clientX, y: e.clientY };
+    if (raf) return;
+    raf = requestAnimationFrame(() => {
+      raf = 0;
+      if (!pending) return;
+      const r = pending.el.getBoundingClientRect();
+      pending.el.style.setProperty("--mx", (pending.x - r.left).toFixed(1) + "px");
+      pending.el.style.setProperty("--my", (pending.y - r.top).toFixed(1) + "px");
+    });
+  }, { passive: true });
+})();
 
 function markDirty() { dirty = true; }
 
@@ -2278,7 +2461,7 @@ window.addEventListener("beforeunload", e => {
 // 首屏: 立即拉一次; 失败则退避重试, 不再停在空白页等用户刷新
 setPill("⏳ 正在连接面板…", "off");
 load().then(r => {
-  if (r.ok) return;
+  if (r.ok) { playPanelEnter($("#panel-status")); return; }
   setPill("🔌 面板未就绪 · 自动重试中", "err");
   bootRetry();
 });
