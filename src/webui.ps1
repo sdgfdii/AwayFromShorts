@@ -326,6 +326,7 @@ $handler = {
                 if (-not $token) { throw '请输入 GitHub Personal Access Token' }
                 $u = Get-AfsGitHubUser -Token $token   # 验证失败会抛 401
                 Save-AfsGitHubToken -Token $token
+                Save-AfsAccountCache $u                # 缓存用户信息, 面板后续离线读取
                 $state = Get-AfsSyncState
                 Send-AfsJson -Stream $stream -Status 200 -Obj @{
                     ok = $true
@@ -342,6 +343,11 @@ $handler = {
         }
         if ($method -eq 'POST' -and $path -eq '/api/account/logout') {
             Clear-AfsGitHubToken
+            try {
+                $s = Get-AfsSyncState
+                $s.login = $null; $s.name = $null; $s.email = $null
+                Save-AfsSyncState $s
+            } catch { }
             Send-AfsJson -Stream $stream -Status 200 -Obj @{ ok = $true; note = '已退出登录, 本机 Token 已删除' }
             return
         }

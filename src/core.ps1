@@ -1008,9 +1008,24 @@ function Invoke-AfsGitHubApi {
 }
 
 # 验证 Token 并返回用户信息 (login/name/email)
+# 注意: 会联网。面板首屏加载绝不能走这里(单线程 HTTP 服务, 一次 20s 卡顿会让整页空白),
+#       登录/同步这类用户主动操作用它, 其余走 Get-AfsAccountInfo 的本地缓存。
 function Get-AfsGitHubUser {
-    param([string]$Token)
-    Invoke-AfsGitHubApi -Method 'GET' -Path '/user' -Token $Token
+    param([string]$Token, [int]$TimeoutSec = 20)
+    Invoke-AfsGitHubApi -Method 'GET' -Path '/user' -Token $Token -TimeoutSec $TimeoutSec
+}
+
+# 把 GitHub 用户信息缓存进 sync-state, 供面板离线读取
+function Save-AfsAccountCache {
+    param($User)
+    if (-not $User) { return }
+    try {
+        $state = Get-AfsSyncState
+        $state.login = $User.login
+        $state.name = $User.name
+        $state.email = $User.email
+        Save-AfsSyncState $state
+    } catch { }
 }
 
 function Test-AfsGitHubToken {
@@ -1087,21 +1102,29 @@ function Pull-AfsSyncConfig {
 
 # 给面板用的账号信息 (无 Token / Token 失效都返回可序列化的结构)
 function Get-AfsAccountInfo {
+    param([switch]$Refresh)
     $token = Get-AfsGitHubToken
     if (-not $token) { return @{ loggedIn = $false } }
-    try {
-        $u = Get-AfsGitHubUser -Token $token
-        $state = Get-AfsSyncState
-        @{
-            loggedIn = $true
-            login    = $u.login
-            name     = if ($u.name) { $u.name } else { $null }
-            email    = if ($u.email) { $u.email } else { $null }
-            gistId   = $state.gistId
-            lastSync = $state.lastSync
-            autoPush = [bool]$state.autoPush
+    $state = Get-AfsSyncState
+    # 优先用本地缓存: 面板每次打开都会调它, 联网会让单线程服务卡住整个首屏
+    $hasCache = [bool]$state.login
+    if ($Refresh -or -not $hasCache) {
+        try {
+            $u = Get-AfsGitHubUser -Token $token -TimeoutSec 6
+            Save-AfsAccountCache $u
+            $state = Get-AfsSyncState
+        } catch {
+            if (-not $hasCache) { return @{ loggedIn = $false; error = $_.Exception.Message } }
+            # 有缓存 → 离线可读, 忽略这次网络失败
         }
-    } catch {
-        @{ loggedIn = $false; error = $_.Exception.Message }
+    }
+    @{
+        loggedIn = $true
+        login    = $state.login
+        name     = $state.name
+        email    = $state.email
+        gistId   = $state.gistId
+        lastSync = $state.lastSync
+        autoPush = [bool]$state.autoPush
     }
 }

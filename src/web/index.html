@@ -1005,23 +1005,78 @@ const WD_CN = ["", "周一", "周二", "周三", "周四", "周五", "周六", "
 const forceLocked = () => !!(cfg && cfg.force && cfg.force.enabled);
 
 /* ================= 加载 ================= */
+/* 开机后首屏偶发空白的原因: 以前这里是 Promise.all(5 个接口), 只要有一个慢/失败,
+   整块渲染就不会执行, 页面停在空壳; 而面板服务是单线程顺序处理请求 —— 开机初期
+   网络/后端未就绪时任何一个接口卡住, 其余请求全部排队, 于是整页空白, 得手动刷新。
+   现在: 各接口独立结算(allSettled) + 得到谁渲染谁 + 失败自动退避重试, 无需人工干预。 */
+let bootAttempt = 0;
+let bootTimer = null;
+const BOOT_MAX_ATTEMPTS = 60;   // 约 5 分钟封顶(之后仍由 20s 自动刷新继续兜底)
+
+function setPill(text, cls) { const p = $("#topPill"); if (p) { p.textContent = text; p.className = "pill " + cls; p.dataset.state = cls; } }
+
+// 返回 { ok, loaded } —— ok=核心数据(配置+状态)齐了, loaded=至少拿到一部分
 async function load() {
-  try {
-    const [c, s, a, st, act] = await Promise.all([api("/api/config"), api("/api/status"), api("/api/account"), api("/api/stats"), api("/api/activity")]);
-    cfg = c.config;
-    status = s;
-    acct = a.account;
-    stats = st.stats;
-    activity = act.activity;
-    $("#verTag").textContent = s.version;
-    $("#aboutVer").textContent = "v" + s.version;
-    $("#aboutPort").textContent = (c.config.web && c.config.web.port) || 8737;
-    dirty = false;
-    renderAll();
-  } catch (e) {
-    toast("加载失败: " + e.message, "err");
+  const [coreR, extraR] = await Promise.all([
+    // 核心: 决定整页能不能渲染
+    Promise.allSettled([api("/api/config"), api("/api/status")]),
+    // 次要: 账号/统计/活动 —— 挂了也不该影响首屏
+    Promise.allSettled([api("/api/account"), api("/api/stats"), api("/api/activity")]),
+  ]);
+  const [c, s] = coreR;
+  const [a, st, act] = extraR;
+
+  if (c.status === "fulfilled" && c.value && c.value.config) {
+    cfg = c.value.config;
+    $("#aboutPort").textContent = (cfg.web && cfg.web.port) || 8737;
+    renderSchedule(); renderForce(); renderSites(); renderBrowser(); renderProcesses(); renderWhitelist();
   }
+  if (s.status === "fulfilled" && s.value) {
+    status = s.value;
+    if (s.value.version) { $("#verTag").textContent = s.value.version; $("#aboutVer").textContent = "v" + s.value.version; }
+    renderTop();
+  }
+  // 首页/状态页同时依赖 cfg(整卡配色与开关状态) 与 status, 缺一个就等下一轮, 避免渲染中途抛错中断
+  if (cfg && status) { renderHome(); renderStatus(); }
+  if (a.status === "fulfilled" && a.value) { acct = a.value.account; renderSync(); }
+  if (st.status === "fulfilled" && st.value) { stats = st.value.stats; renderStatsNew(); }
+  if (act.status === "fulfilled" && act.value) { activity = act.value.activity; }
+
+  const ok = !!(cfg && status);
+  if (ok) dirty = false;
+  const errs = [["配置", c], ["状态", s], ["账号", a], ["统计", st], ["活动", act]]
+    .filter(([, r]) => r.status === "rejected")
+    .map(([n, r]) => n + ": " + (r.reason && r.reason.message ? r.reason.message : r.reason));
+  return { ok, loaded: cfg || status, err: errs.join("; ") };
 }
+
+// 首屏没起来 → 退避重试(1s,2s,3s,4s,5s…封顶 5s), 起来后自动停
+function bootRetry() {
+  if (bootTimer || bootAttempt >= BOOT_MAX_ATTEMPTS) return;
+  bootAttempt++;
+  const wait = Math.min(1000 * bootAttempt, 5000);
+  bootTimer = setTimeout(async () => {
+    bootTimer = null;
+    const r = await load();
+    if (r.ok) { bootAttempt = 0; }
+    else { setPill("🔌 面板未就绪 · 自动重试中(" + bootAttempt + ")", "err"); bootRetry(); }
+  }, wait);
+}
+
+// 点击顶栏状态胶囊: 面板未就绪时手动触发一次重连
+const topPillEl = $("#topPill");
+if (topPillEl) {
+  topPillEl.style.cursor = "pointer";
+  topPillEl.title = "点击可重新连接面板";
+  topPillEl.addEventListener("click", async () => {
+    if (cfg && status) { toast("面板连接正常", "ok"); return; }
+    setPill("⏳ 正在连接面板…", "off");
+    bootTimer = null; bootAttempt = 0;
+    const r = await load();
+    if (r.ok) toast("面板已连接", "ok"); else { setPill("🔌 面板未就绪 · 自动重试中", "err"); bootRetry(); }
+  });
+}
+
 
 /* ================= 渲染 ================= */
 function renderAll() {
@@ -2093,9 +2148,10 @@ let autoLast = Date.now();
 
 async function autoRefresh() {
   if (autoBusy || document.hidden) return;      // 正在刷新 / 页面在后台 → 跳过
-  if (!status || !cfg) return;                  // 首屏尚未加载完成
   autoBusy = true;
   try {
+    // 首屏(配置+状态)还没就绪 → 后台自动补齐, 用户不用手动刷新
+    if (!status || !cfg) { await load(); return; }
     await refreshStatus(true);
     autoLast = Date.now();
     if ($("#panel-stats") && $("#panel-stats").classList.contains("active")) await refreshStats(true);
@@ -2218,7 +2274,14 @@ window.addEventListener("beforeunload", e => {
   if (dirty) { e.preventDefault(); e.returnValue = ""; }
 });
 
-load();
+/* ---------- 启动 ---------- */
+// 首屏: 立即拉一次; 失败则退避重试, 不再停在空白页等用户刷新
+setPill("⏳ 正在连接面板…", "off");
+load().then(r => {
+  if (r.ok) return;
+  setPill("🔌 面板未就绪 · 自动重试中", "err");
+  bootRetry();
+});
 </script>
 </body>
 </html>

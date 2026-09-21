@@ -50,8 +50,31 @@ const markers = [
   ["可见焦点环", /:focus-visible \{ outline: 2px solid var\(--accent\)/],
   ["按钮样式复位", /width: 100%; background: transparent; font: inherit; text-align: left;/],
   ["强制模式: 星期/时段锁定", /forceLocked/],
+  // 首屏健壮性 (开机后空白页回归防护)
+  ["首屏分接口结算 allSettled", /Promise\.allSettled\(/],
+  ["首屏退避重试 bootRetry", /function bootRetry\(/],
+  ["启动即触发重试", /bootRetry\(\);/],
+  ["自动刷新兜底加载", /if \(!status \|\| !cfg\) \{ await load\(\); return; \}/],
+  ["状态胶囊可点击重连", /topPillEl\.addEventListener\("click"/],
+  ["渲染前校验核心数据", /if \(cfg && status\) \{ renderHome\(\); renderStatus\(\); \}/],
+  ["连接中提示", /正在连接面板/],
 ];
 markers.forEach(([name, re]) => rep(name, re.test(html)));
+
+/* ---------- 2b. 后端标记 (空白页根因: /api/account 联网阻塞单线程 HTTP 服务) ---------- */
+const coreFile = path.join(__dirname, "..", "src", "core.ps1");
+const uiFile = path.join(__dirname, "..", "src", "webui.ps1");
+try {
+  const core = fs.readFileSync(coreFile, "utf8");
+  const ui = fs.readFileSync(uiFile, "utf8");
+  const backend = [
+    ["后端: /api/account 本地缓存优先", /hasCache/, core],
+    ["后端: 用户信息缓存落盘", /function Save-AfsAccountCache/, core],
+    ["后端: 缓存缺失时限时补拉(6s)", /TimeoutSec 6/, core],
+    ["后端: 登录成功写缓存", /Save-AfsAccountCache \$u/, ui],
+  ];
+  backend.forEach(([name, re, src]) => rep(name, re.test(src)));
+} catch (e) { rep("读取后端脚本", false, "- " + e.message); }
 
 /* ---------- 3. 结构平衡 ---------- */
 const cnt = (re) => (html.match(re) || []).length;
