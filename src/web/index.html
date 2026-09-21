@@ -3,6 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0f1117">
 <title>AwayFromShorts · 配置面板</title>
 <style>
   :root {
@@ -18,6 +20,9 @@
     --red: #ff5d5d;
     --orange: #ffab3d;
     --radius: 12px;
+    /* 让浏览器原生控件(滚动条/下拉框/日期选择器/复选框)跟随深色主题 */
+    color-scheme: dark;
+    accent-color: var(--accent);
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -908,10 +913,27 @@ let dirty = false;
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
-async function api(path, method = "GET", body) {
+// 请求超时(毫秒)。面板卡死时不再无限等待, 避免按钮永久禁用。
+const API_TIMEOUT = 15000;
+function delay(ms) { return new Promise(res => setTimeout(res, ms)); }
+
+async function api(path, method = "GET", body, _attempt = 0) {
   const opt = { method, headers: {} };
   if (body !== undefined) { opt.headers["Content-Type"] = "application/json"; opt.body = JSON.stringify(body); }
-  const r = await fetch(path, opt);
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), API_TIMEOUT);
+  opt.signal = ctrl.signal;
+  let r;
+  try {
+    r = await fetch(path, opt);
+  } catch (e) {
+    const timedOut = e && e.name === "AbortError";
+    // 只对只读请求自动重试一次; 写操作不重试, 避免重复生效
+    if ((method === "GET") && _attempt < 1) { await delay(600); return api(path, method, body, _attempt + 1); }
+    throw new Error(timedOut ? ("请求超时(" + (API_TIMEOUT / 1000) + "s), 面板无响应") : ("网络错误: " + (e && e.message ? e.message : e)));
+  } finally {
+    clearTimeout(timer);
+  }
   let j = null;
   try { j = await r.json(); } catch (e) {}
   if (!r.ok || (j && j.ok === false)) throw new Error((j && j.error) || ("HTTP " + r.status));
@@ -1996,7 +2018,7 @@ $("#saveBtn").addEventListener("click", async () => {
       catch (e) { toast("已保存, 但云端同步失败: " + e.message, "err"); }
     }
   } catch (e) { toast("保存失败: " + e.message, "err"); }
-  btn.disabled = false;
+  finally { btn.disabled = false; }
 });
 
 // 状态操作
