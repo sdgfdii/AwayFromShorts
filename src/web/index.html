@@ -20,6 +20,8 @@
     --red: #ff5d5d;
     --orange: #ffab3d;
     --radius: 12px;
+    /* 每页专属色相: 切页时由 JS 覆写, 驱动导航光柱/扫光/入场配色 */
+    --tab-h: 218;
     /* 让浏览器原生控件(滚动条/下拉框/日期选择器/复选框)跟随深色主题 */
     color-scheme: dark;
     accent-color: var(--accent);
@@ -47,10 +49,11 @@
   }
   .brand .name { font-weight: 700; font-size: 15px; }
   .brand .ver { font-size: 11px; color: var(--muted); }
-  .nav-list { display: flex; flex-direction: column; }
+  .nav-list { display: flex; flex-direction: column; position: relative; }
   .nav-item {
     display: flex; align-items: center; gap: 10px;
     padding: 9px 12px; margin: 2px 0; border-radius: 9px;
+    position: relative; z-index: 1;
     color: var(--muted); cursor: pointer; user-select: none;
     border: 1px solid transparent;
     /* nav-item 是 <button>: 复位原生按钮样式, 保持原视觉 */
@@ -86,9 +89,11 @@
   .btn.small { padding: 3px 9px; font-size: 12px; border-radius: 7px; }
   .btn:disabled { opacity: .45; cursor: not-allowed; }
 
-  .panel { display: none; }
+  .panel { display: none; position: relative; }
   .panel.active { display: block; animation: fade .18s ease; }
+  .panel.active.leaving { animation: panelOut .17s ease forwards; }
   @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; } }
+  @keyframes panelOut { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(-14px) scale(.986); filter: blur(6px); } }
 
   .card {
     background: var(--panel); border: 1px solid var(--border);
@@ -661,16 +666,8 @@
   :focus-visible { box-shadow: 0 0 0 4px rgba(79,140,255,.20); }
 
   /* ---------- 4. 动效 ---------- */
-  /* 4.1 切页入场: 直接子块依次浮起(只在切页时由 JS 加 .enter, 定时刷新不会重播) */
+  /* 4.1 切页入场: 见第 5 节(panelIn / panelInAlt + 扫描光, 同样只在切页时由 JS 加 .enter) */
   /* 注意用 backwards 而非 both: forwards 填充会盖掉 hover 的 transform */
-  @keyframes riseIn { from { opacity: 0; transform: translateY(16px) scale(.992); } to { opacity: 1; transform: none; } }
-  .panel.enter:not(#panel-stats) > * { animation: riseIn .44s cubic-bezier(.22,.9,.35,1) backwards; }
-  .panel.enter:not(#panel-stats) > *:nth-child(1) { animation-delay: 0ms; }
-  .panel.enter:not(#panel-stats) > *:nth-child(2) { animation-delay: 50ms; }
-  .panel.enter:not(#panel-stats) > *:nth-child(3) { animation-delay: 100ms; }
-  .panel.enter:not(#panel-stats) > *:nth-child(4) { animation-delay: 145ms; }
-  .panel.enter:not(#panel-stats) > *:nth-child(5) { animation-delay: 190ms; }
-  .panel.enter:not(#panel-stats) > *:nth-child(n+6) { animation-delay: 230ms; }
   /* 卡片标题竖条随入场淡入放大 */
   @keyframes markIn { from { transform: scaleY(0); } to { transform: scaleY(1); } }
   .panel.enter .card h3::before { animation: markIn .35s cubic-bezier(.34,1.56,.64,1) both; }
@@ -705,6 +702,115 @@
   .bar-track:hover .bar-fill { filter: brightness(1.15) saturate(1.1); }
   .home-kpi .iv, .hero-metric .v, .akpi .v { transition: color .25s; }
 
+  /* ---------- 5. 切页花活: 滑动光柱 / 全屏扫光 / 逐块飞入 / 每页专属色相 ---------- */
+  /* 5.0 侧边栏滑动光柱: 一整块光跟着当前页走(而不是每个 item 各自亮) */
+  .nav-glow {
+    position: absolute; left: 0; right: 0; top: 0; height: 34px; z-index: 0;
+    border-radius: 10px; pointer-events: none; overflow: hidden; opacity: 0;
+    background: linear-gradient(90deg, hsl(var(--tab-h), 100%, 64%, .26), hsl(calc(var(--tab-h) + 45), 100%, 64%, .09));
+    box-shadow: inset 0 0 0 1px hsl(var(--tab-h), 100%, 66%, .40), 0 0 26px hsl(var(--tab-h), 100%, 60%, .26);
+    transition: transform .46s cubic-bezier(.3,1.42,.45,1), height .3s ease, opacity .35s ease,
+                background .5s ease, box-shadow .5s ease;
+  }
+  .nav-glow.ready { opacity: 1; }
+  .nav-glow::after {
+    content: ""; position: absolute; inset: 0;
+    background: linear-gradient(100deg, transparent 34%, rgba(255,255,255,.22) 50%, transparent 66%);
+    background-size: 220% 100%; opacity: 0;
+  }
+  .nav-glow.sweep::after { animation: glowSheen .55s ease; }
+  @keyframes glowSheen { from { background-position: -120% 0; opacity: .9; } to { background-position: 240% 0; opacity: 0; } }
+
+  /* 5.1 侧边栏整体: 一道光自上而下刷过 */
+  .sidebar::after {
+    content: ""; position: absolute; left: 0; right: 0; top: -30%; height: 30%;
+    pointer-events: none; z-index: 5; opacity: 0;
+    background: linear-gradient(180deg, transparent, hsl(var(--tab-h), 100%, 72%, .11), transparent);
+  }
+  .sidebar.sweep::after { animation: sideBeam .62s ease-out; }
+  @keyframes sideBeam { 0% { top: -30%; opacity: 0; } 22% { opacity: 1; } 100% { top: 100%; opacity: 0; } }
+
+  /* 5.2 主区斜向扫光 + 色相闪光(容器是 body 里的 #warp, 不吃鼠标事件) */
+  .warp { position: fixed; inset: 0; z-index: 40; pointer-events: none; overflow: hidden; }
+  .warp::before {
+    content: ""; position: absolute; top: -25%; bottom: -25%; left: -55%; width: 42%;
+    background: linear-gradient(100deg, transparent, hsl(var(--tab-h), 100%, 68%, .17) 34%,
+                rgba(255,255,255,.10) 50%, hsl(calc(var(--tab-h) + 50), 100%, 68%, .15) 66%, transparent);
+    filter: blur(16px); transform: skewX(-14deg); opacity: 0;
+  }
+  .warp.run::before { animation: warpSweep .64s cubic-bezier(.3,.72,.24,1); }
+  @keyframes warpSweep { 0% { left: -55%; opacity: 0; } 10% { opacity: 1; } 100% { left: 122%; opacity: 0; } }
+  .warp::after {
+    content: ""; position: absolute; inset: 0; opacity: 0;
+    background: radial-gradient(120% 75% at 6% 26%, hsl(var(--tab-h), 100%, 62%, .17), transparent 62%);
+  }
+  .warp.run::after { animation: warpFlash .55s ease-out; }
+  @keyframes warpFlash { 0% { opacity: 0; } 16% { opacity: 1; } 100% { opacity: 0; } }
+
+  /* 5.3 导航项: 点击冲击环 + 圆点回弹 + 配色跟页走 */
+  /* 用 box-shadow 扩散而不是 transform: scale —— 缩放会撑大侧边栏的横向可滚动区域, 会冒出横向滚动条 */
+  .nav-item::after {
+    content: ""; position: absolute; inset: 0; border-radius: 10px; opacity: 0; pointer-events: none;
+  }
+  .nav-item.burst::after { animation: navBurst .62s cubic-bezier(.2,.8,.3,1); }
+  @keyframes navBurst {
+    0%   { opacity: 1; box-shadow: 0 0 0 0 hsl(var(--tab-h), 100%, 72%, .60); }
+    100% { opacity: 1; box-shadow: 0 0 0 11px hsl(var(--tab-h), 100%, 72%, 0); }
+  }
+  @keyframes dotPing { 0% { transform: scale(.5); } 58% { transform: scale(1.95); } 100% { transform: scale(1.3); } }
+  .nav-item.active .dot { animation: dotPing .5s cubic-bezier(.34,1.56,.64,1); }
+  .nav-item.active {
+    color: hsl(var(--tab-h), 100%, 78%);
+    background: linear-gradient(90deg, hsl(var(--tab-h), 100%, 64%, .20), hsl(calc(var(--tab-h) + 45), 100%, 64%, .08));
+    box-shadow: inset 0 0 0 1px hsl(var(--tab-h), 100%, 66%, .34);
+  }
+  .nav-item:hover::before, .nav-item.active::before {
+    background: linear-gradient(hsl(var(--tab-h), 100%, 66%), hsl(calc(var(--tab-h) + 50), 100%, 66%));
+    box-shadow: 0 0 12px hsl(var(--tab-h), 100%, 62%, .8);
+  }
+
+  /* 5.4 切页入场: 相邻子块左右交替飞入 + 一道光扫过整块面板 */
+  @keyframes panelIn {
+    0%   { opacity: 0; transform: translate3d(0, 38px, 0) scale(.955); filter: blur(11px) saturate(1.7); }
+    62%  { filter: blur(0) saturate(1); }
+    100% { opacity: 1; transform: none; filter: blur(0) saturate(1); }
+  }
+  @keyframes panelInAlt {
+    0%   { opacity: 0; transform: translate3d(26px, 26px, 0) scale(.96); filter: blur(11px); }
+    62%  { filter: blur(0); }
+    100% { opacity: 1; transform: none; filter: blur(0); }
+  }
+  .panel.enter:not(#panel-stats) > * { animation: panelIn .56s cubic-bezier(.22,.9,.3,1) backwards; }
+  .panel.enter:not(#panel-stats) > *:nth-child(even) { animation-name: panelInAlt; }
+  .panel.enter:not(#panel-stats) > *:nth-child(1) { animation-delay: 0ms; }
+  .panel.enter:not(#panel-stats) > *:nth-child(2) { animation-delay: 60ms; }
+  .panel.enter:not(#panel-stats) > *:nth-child(3) { animation-delay: 115ms; }
+  .panel.enter:not(#panel-stats) > *:nth-child(4) { animation-delay: 165ms; }
+  .panel.enter:not(#panel-stats) > *:nth-child(5) { animation-delay: 210ms; }
+  .panel.enter:not(#panel-stats) > *:nth-child(n+6) { animation-delay: 250ms; }
+  /* 进场扫描光: 从面板顶部开始向下掠过, 起点 opacity 0, 不会漏到面板外 */
+  .panel.enter:not(#panel-stats)::after {
+    content: ""; position: absolute; left: 0; right: 0; top: 0; height: 130px;
+    pointer-events: none; z-index: 3; opacity: 0;
+    background: linear-gradient(180deg, transparent, hsl(var(--tab-h), 100%, 74%, .10) 48%, transparent);
+    animation: scanDown .8s cubic-bezier(.3,.75,.25,1);
+  }
+  @keyframes scanDown { 0% { top: 0; opacity: 0; } 9% { opacity: 1; } 82% { opacity: 1; } 100% { top: 94%; opacity: 0; } }
+  /* 统计页沿用原有 stat-anim, 只叠一层色相辉光 */
+  .panel.enter#panel-stats { animation: fade .18s ease, statGlow .7s ease-out; }
+  @keyframes statGlow {
+    0%   { filter: drop-shadow(0 0 0 transparent); }
+    30%  { filter: drop-shadow(0 0 18px hsl(var(--tab-h), 100%, 62%, .35)); }
+    100% { filter: drop-shadow(0 0 0 transparent); }
+  }
+
+  /* 5.5 标题: 字距收拢 + 模糊聚焦 */
+  @keyframes titleIn {
+    0%   { opacity: 0; transform: translateY(-10px) scale(.94); letter-spacing: 9px; filter: blur(7px); }
+    100% { opacity: 1; transform: none; letter-spacing: .2px; filter: blur(0); }
+  }
+  .topbar h1.flip { animation: titleIn .5s cubic-bezier(.22,.9,.3,1) backwards; }
+
   /* ---------- 键盘可达性: 可见焦点环 ---------- */
   :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .nav-item:focus-visible { outline-offset: -2px; }
@@ -722,6 +828,8 @@
 </style>
 </head>
 <body>
+<!-- 切页扫光层: 纯装饰, 不吃鼠标事件 -->
+<div class="warp" id="warp" aria-hidden="true"></div>
 <div class="app">
   <nav class="sidebar" aria-label="主导航">
     <div class="brand">
@@ -732,6 +840,7 @@
       </div>
     </div>
     <div class="nav-list" role="tablist" aria-orientation="vertical" aria-label="功能页面">
+      <span class="nav-glow" id="navGlow" aria-hidden="true"></span>
       <button type="button" class="nav-item active" data-tab="status" role="tab" aria-selected="true" aria-controls="panel-status" tabindex="0"><span class="dot" aria-hidden="true"></span>状态 / 屏蔽计划</button>
       <button type="button" class="nav-item" data-tab="sites" role="tab" aria-selected="false" aria-controls="panel-sites" tabindex="-1"><span class="dot" aria-hidden="true"></span>网站屏蔽</button>
       <button type="button" class="nav-item" data-tab="processes" role="tab" aria-selected="false" aria-controls="panel-processes" tabindex="-1"><span class="dot" aria-hidden="true"></span>进程屏蔽</button>
@@ -2096,18 +2205,75 @@ document.querySelectorAll(".panel").forEach(p => {
   p.setAttribute("aria-labelledby", "tab-" + p.id.replace(/^panel-/, ""));
 });
 
+/* ---------- 切页花活: 光柱 / 扫光 / 每页色相 ---------- */
+// 每页一个色相(HSL 的 H): 导航光柱、扫光、入场辉光都吃这个值
+const TAB_HUE = { status: 218, sites: 268, processes: 22, whitelist: 152, stats: 190, sync: 320, about: 232 };
+const REDUCED_MOTION = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+
+function setTabHue(tab) {
+  const h = TAB_HUE[tab];
+  document.documentElement.style.setProperty("--tab-h", String(h == null ? 218 : h));
+}
+
+// 把光柱移到当前项上(offsetTop 相对 .nav-list, 已 position: relative)
+function moveNavGlow(el) {
+  const glow = $("#navGlow");
+  if (!glow || !el) return;
+  glow.style.height = el.offsetHeight + "px";
+  glow.style.transform = "translateY(" + el.offsetTop + "px)";
+  glow.classList.add("ready");
+  if (!REDUCED_MOTION) { glow.classList.remove("sweep"); void glow.offsetWidth; glow.classList.add("sweep"); }
+}
+
+function replay(cls, el) {           // 移除→强制重排→加回, 让一次性动画能重播
+  if (!el) return;
+  el.classList.remove(cls);
+  void el.offsetWidth;
+  el.classList.add(cls);
+}
+
+let tabSwapTimer = null, tabSwapToken = 0;
+
 function activateTab(el) {
+  const tab = el.dataset.tab;
   navItems().forEach(x => {
     const on = (x === el);
     x.classList.toggle("active", on);
     x.setAttribute("aria-selected", on ? "true" : "false");
     x.tabIndex = on ? 0 : -1;      // roving tabindex: Tab 键只停在当前页, 方向键切换
   });
-  document.querySelectorAll(".panel").forEach(x => x.classList.remove("active"));
-  const panel = $("#panel-" + el.dataset.tab);
-  if (panel) { panel.classList.add("active"); playPanelEnter(panel); }
-  $("#panelTitle").textContent = TAB_TITLES[el.dataset.tab] || "";
-  if (el.dataset.tab === "stats") refreshStats();   // 进入统计页时拉取最新数据
+
+  // ---- 过场花活(纯视觉, 不影响数据) ----
+  setTabHue(tab);
+  moveNavGlow(el);
+  replay("burst", el);
+  replay("sweep", document.querySelector(".sidebar"));
+  replay("run", $("#warp"));
+  replay("flip", $("#panelTitle"));
+
+  const target = $("#panel-" + tab);
+  const current = document.querySelector(".panel.active");
+  const token = ++tabSwapToken;
+  clearTimeout(tabSwapTimer);
+
+  const swap = () => {
+    if (token !== tabSwapToken) return;                       // 期间又切了页, 这次作废
+    const changed = !!(current && current !== target);
+    document.querySelectorAll(".panel").forEach(x => x.classList.remove("active", "leaving"));
+    if (target) { target.classList.add("active"); playPanelEnter(target); }
+    if (changed) { const m = $(".main"); if (m) m.scrollTop = 0; }
+  };
+
+  // 旧页先退场(170ms), 再让新页飞入; 关闭了动效就直接切
+  if (current && current !== target && !REDUCED_MOTION) {
+    current.classList.add("leaving");
+    tabSwapTimer = setTimeout(swap, 170);
+  } else {
+    swap();
+  }
+
+  $("#panelTitle").textContent = TAB_TITLES[tab] || "";
+  if (tab === "stats") refreshStats();   // 进入统计页时拉取最新数据
 }
 
 /* 切页入场动效: 只在这里触发(定时刷新不重播, 避免每 20s 闪一次) */
@@ -2460,6 +2626,10 @@ window.addEventListener("beforeunload", e => {
 /* ---------- 启动 ---------- */
 // 首屏: 立即拉一次; 失败则退避重试, 不再停在空白页等用户刷新
 setPill("⏳ 正在连接面板…", "off");
+// 光柱要先对上首屏那一项(布局未稳时用 rAF 再补一次, 避免 font 加载后偏移)
+moveNavGlow($(".nav-item.active"));
+requestAnimationFrame(() => moveNavGlow($(".nav-item.active")));
+window.addEventListener("resize", () => moveNavGlow($(".nav-item.active")));
 load().then(r => {
   if (r.ok) { playPanelEnter($("#panel-status")); return; }
   setPill("🔌 面板未就绪 · 自动重试中", "err");

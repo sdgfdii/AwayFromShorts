@@ -68,10 +68,26 @@ const markers = [
   ["阴影层级令牌 --sh-3", /--sh-3:/],
   ["阴影: 卡片悬停加深", /\.card:hover \{ border-color: rgba\(79,140,255,\.42\)/],
   ["动效: 切页入场 playPanelEnter", /function playPanelEnter/],
-  ["动效: 入场用 backwards(不挡 hover)", /riseIn \.44s cubic-bezier\(\.22,\.9,\.35,1\) backwards/],
+  ["动效: 入场用 backwards(不挡 hover)", /panelIn \.56s cubic-bezier\(\.22,\.9,\.3,1\) backwards/],
   ["动效: 列表插入 rowIn", /@keyframes rowIn/],
   ["动效: 柱条数值过渡", /\.bar-fill, \.vb \.bar \.col/],
   ["减少动效降级保留", /@media \(prefers-reduced-motion: reduce\)/],
+  // 切页花活: 光柱 / 扫光 / 逐块飞入 / 每页色相
+  ["花活: 每页色相令牌 --tab-h", /--tab-h: 218;/],
+  ["花活: 滑动光柱元素", /class="nav-glow" id="navGlow"/],
+  ["花活: 光柱跟随当前项", /function moveNavGlow\(el\)/],
+  ["花活: 光柱弹性位移", /transform \.46s cubic-bezier\(\.3,1\.42,\.45,1\)/],
+  ["花活: 全屏扫光层", /class="warp" id="warp"/],
+  ["花活: 斜向扫光动画", /@keyframes warpSweep/],
+  ["花活: 色相闪光", /@keyframes warpFlash/],
+  ["花活: 旧页退场 panelOut", /@keyframes panelOut/],
+  ["花活: 退场延时换页", /setTimeout\(swap, 170\)/],
+  ["花活: 子块左右交替飞入", /@keyframes panelInAlt/],
+  ["花活: 进场扫描光", /@keyframes scanDown/],
+  ["花活: 导航点击冲击环", /@keyframes navBurst/],
+  ["花活: 冲击环用阴影扩散(不撑滚动区)", /box-shadow: 0 0 0 11px hsl\(var\(--tab-h\)/],
+  ["花活: 标题字距收拢", /@keyframes titleIn/],
+  ["花活: 切页竞态防护", /if \(token !== tabSwapToken\) return;/],
 ];
 markers.forEach(([name, re]) => rep(name, re.test(html)));
 
