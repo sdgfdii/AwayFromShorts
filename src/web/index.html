@@ -122,6 +122,9 @@
   .chip.locked { opacity: .45; cursor: not-allowed; }
   .chip.locked:hover { border-color: var(--border); color: var(--muted); box-shadow: none; }
   .chip.locked.on { background: var(--accent2); border-color: var(--accent2); color: #fff; }
+  .window-row.locked input[type="time"] { opacity: .45; cursor: not-allowed; pointer-events: none; }
+  .window-row.locked .del-window { opacity: .4; cursor: not-allowed; }
+  #addWindowBtn[disabled] { opacity: .45; cursor: not-allowed; }
 
   .window-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
   .window-row input[type="time"] {
@@ -1196,7 +1199,7 @@ function renderSchedule() {
       const fw = ((cfg.force || {}).weekdays || []).filter(x => x);
       const fwTxt = (!fw.length || fw.length >= 7) ? "每天" : fw.map(d => WD_CN[d]).join("、");
       ln.style.display = "";
-      ln.innerHTML = `🔒 <b>强制模式已开启</b>(强制星期: ${fwTxt}) — 强制模式开启期间<b>「屏蔽星期」已锁定, 无法修改</b>(防破戒: 改星期会让强制模式当天失效)。如需调整, 请先在上方「强制模式」卡片中<b>关闭强制模式</b>。`;
+      ln.innerHTML = `🔒 <b>强制模式已开启</b>(强制星期: ${fwTxt}) — 强制模式开启期间<b>「屏蔽星期」与「屏蔽时段」均已锁定, 无法修改</b>(防破戒: 改星期或时段会让强制模式当天失效)。如需调整, 请先在上方「强制模式」卡片中<b>关闭强制模式</b>。`;
     } else {
       ln.style.display = "none";
     }
@@ -1204,13 +1207,15 @@ function renderSchedule() {
 
   const ws = cfg.schedule.windows;
   $("#windowRows").innerHTML = (ws.length ? ws : [{ start: "19:00", end: "22:00" }]).map((w, i) =>
-    `<div class="window-row">
-       <input type="time" value="${esc(w.start)}" data-i="${i}" data-f="start">
+    `<div class="window-row${locked ? " locked" : ""}">
+       <input type="time" value="${esc(w.start)}" data-i="${i}" data-f="start" ${locked ? "disabled" : ""} title="${locked ? "强制模式开启中, 屏蔽时段已锁定" : ""}">
        <span class="sep">→</span>
-       <input type="time" value="${esc(w.end)}" data-i="${i}" data-f="end">
-       <button class="btn small red del-window" data-i="${i}">删除</button>
+       <input type="time" value="${esc(w.end)}" data-i="${i}" data-f="end" ${locked ? "disabled" : ""} title="${locked ? "强制模式开启中, 屏蔽时段已锁定" : ""}">
+       <button class="btn small red del-window" data-i="${i}" ${locked ? "disabled" : ""}>删除</button>
      </div>`).join("");
-  if (!ws.length) cfg.schedule.windows = [{ start: "19:00", end: "22:00" }];
+  const awb = $("#addWindowBtn");
+  if (awb) awb.disabled = locked;
+  if (!ws.length && !locked) cfg.schedule.windows = [{ start: "19:00", end: "22:00" }];
 }
 
 function renderForce() {
@@ -1223,7 +1228,7 @@ function renderForce() {
   const fWds = f.weekdays || [];
   if (f.enabled && forced) {
     fa.innerHTML =
-      `<div class="note red-note">🔒 <b>强制模式生效中(当前屏蔽时段)</b> — 强制期间<b>无法提前关闭</b>(防破戒), 也无法关闭屏蔽 / 临时解除 / <b>修改屏蔽星期</b>。<br>适用: <b>${wdShow(fWds)}</b> 的屏蔽时段, 星期循环长期有效(无到期日)。等当前时段结束, 或在非所选星期 / 屏蔽窗口外可手动关闭。</div>`;
+      `<div class="note red-note">🔒 <b>强制模式生效中(当前屏蔽时段)</b> — 强制期间<b>无法提前关闭</b>(防破戒), 也无法关闭屏蔽 / 临时解除 / <b>修改屏蔽星期 / 屏蔽时段</b>。<br>适用: <b>${wdShow(fWds)}</b> 的屏蔽时段, 星期循环长期有效(无到期日)。等当前时段结束, 或在非所选星期 / 屏蔽窗口外可手动关闭。</div>`;
     return;
   }
   if (f.enabled) {
@@ -1261,7 +1266,7 @@ function renderForce() {
   }));
   const on = $("#forceOnBtn");
   if (on) on.addEventListener("click", async () => {
-    if (!confirm("确定开启强制模式?\n\n开启后: 在所选星期(" + wdTxt(wdSel) + ")的屏蔽时段内长期强制:\n• 强制中无法关闭屏蔽 / 临时解除 / 清除临时设置 / 修改计划\n• 强制中无法提前关闭(防破戒)\n• 非强制时段(窗口外 / 非所选星期)可手动关闭\n\n⚠️ 想清楚再开——进入强制时段就无法反悔, 只能等时段结束。")) return;
+    if (!confirm("确定开启强制模式?\n\n开启后: 在所选星期(" + wdTxt(wdSel) + ")的屏蔽时段内长期强制:\n• 强制中无法关闭屏蔽 / 临时解除 / 清除临时设置 / 修改屏蔽星期 / 修改屏蔽时段\n• 强制中无法提前关闭(防破戒)\n• 非强制时段(窗口外 / 非所选星期)可手动关闭\n\n⚠️ 想清楚再开——进入强制时段就无法反悔, 只能等时段结束。")) return;
     try {
       const r = await api("/api/force", "POST", { enabled: true, weekdays: wdSel });
       toast(r.note || "强制模式已开启", "ok");
@@ -1890,6 +1895,7 @@ $("#dayChips").addEventListener("click", e => {
 $("#windowRows").addEventListener("change", e => {
   const t = e.target;
   if (t.type === "time") {
+    if (forceLocked()) { toast("🔒 强制模式开启中, 屏蔽时段已锁定。请先关闭强制模式再修改。", "err"); renderSchedule(); return; }
     const w = cfg.schedule.windows[+t.dataset.i];
     if (w) w[t.dataset.f] = t.value;
     markDirty();
@@ -1897,12 +1903,14 @@ $("#windowRows").addEventListener("change", e => {
 });
 $("#windowRows").addEventListener("click", e => {
   if (e.target.classList.contains("del-window")) {
+    if (forceLocked()) { toast("🔒 强制模式开启中, 屏蔽时段已锁定。请先关闭强制模式再修改。", "err"); return; }
     const i = +e.target.dataset.i;
     cfg.schedule.windows.splice(i, 1);
     renderSchedule(); markDirty();
   }
 });
 $("#addWindowBtn").addEventListener("click", () => {
+  if (forceLocked()) { toast("🔒 强制模式开启中, 屏蔽时段已锁定。请先关闭强制模式再修改。", "err"); return; }
   cfg.schedule.windows.push({ start: "19:00", end: "20:00" });
   renderSchedule(); markDirty();
 });
