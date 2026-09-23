@@ -66,6 +66,7 @@ function Get-AfsStatusObj {
             $lastRun = ConvertTo-AfsHashtable (ConvertFrom-Json ([System.IO.File]::ReadAllText($lastPath, [System.Text.Encoding]::UTF8)))
         } catch { }
     }
+    $ub = Get-AfsUninstallBlock
     @{
         ok          = $true
         version     = $script:AFS_VERSION
@@ -80,6 +81,10 @@ function Get-AfsStatusObj {
         config      = $cfg
         forceActive = ((Test-AfsForceActive -Config $cfg).active)
         pending     = (Read-AfsPendingQueue)
+        # 强制模式期间禁止卸载: 面板据此禁用按钮(仅提示用, 真拦在 /api/uninstall 与 uninstall.ps1)
+        uninstallBlocked = $ub.blocked
+        uninstallMsg     = $ub.msg
+        uninstallReason  = $ub.reason
     }
 }
 
@@ -338,6 +343,13 @@ $handler = {
             return
         }
         if ($method -eq 'POST' -and $path -eq '/api/uninstall') {
+            # 强制模式期间禁止卸载(防破戒): 这里是 UI 入口的硬拦, uninstall.ps1 里还有一道,
+            # 两道判据同源(Get-AfsUninstallBlock), 所以即使绕过前端也拦得住。
+            $ub = Get-AfsUninstallBlock
+            if ($ub.blocked) {
+                Send-AfsJson -Stream $stream -Status 403 -Obj @{ ok = $false; error = $ub.msg; blocked = $true; reason = $ub.reason }
+                return
+            }
             try {
                 $uninstallPs1 = Join-Path $PSScriptRoot 'uninstall.ps1'
                 if (-not (Test-Path $uninstallPs1)) { throw "找不到 $uninstallPs1" }

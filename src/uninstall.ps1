@@ -8,6 +8,21 @@ $ErrorActionPreference = 'Continue'
 Write-Host ''
 Write-Host '===== AwayFromShorts 卸载 =====' -ForegroundColor Cyan
 
+# 0. 强制模式期间禁止卸载 —— 必须放在所有删除动作之前(也放在提权之前, 免得先弹 UAC 再一闪而过),
+#    命中就直接退出, 什么都不动。面板的"一键卸载"和 uninstall.bat 都收口到这个脚本。
+$guard = Get-AfsUninstallBlock
+if ($guard.blocked) {
+    Write-Host ''
+    Write-Host '===== 已阻止卸载(强制模式保护) =====' -ForegroundColor Red
+    Write-Host ''
+    Write-Host $guard.msg -ForegroundColor Yellow
+    Write-Host ''
+    Write-Host '(未做任何改动: 计划任务 / hosts / 浏览器策略 / 程序文件都保持原样)' -ForegroundColor DarkGray
+    Write-Host ''
+    Start-Sleep -Seconds 4
+    exit 1
+}
+
 if (-not (Get-AfsIsAdmin)) {
     Write-Host '需要管理员权限, 正在请求...' -ForegroundColor Yellow
     $argStr = "-NoProfile -ExecutionPolicy Bypass -File `"$($MyInvocation.MyCommand.Path)`""

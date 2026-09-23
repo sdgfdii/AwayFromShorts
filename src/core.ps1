@@ -5,7 +5,7 @@
 # ============================================================
 
 $script:AFS_NAME        = 'AwayFromShorts'
-$script:AFS_VERSION     = '1.4.0'
+$script:AFS_VERSION     = '1.5.0'
 $script:AFS_MARK_START  = "# >>> $($script:AFS_NAME) >>> (managed by AwayFromShorts - do not edit)"
 $script:AFS_MARK_END    = "# <<< $($script:AFS_NAME) <<<"
 # 这些进程永远不杀,防止把系统/本工具自己弄死
@@ -699,6 +699,40 @@ function Test-AfsForceActive {
     @{ active = $true; until = $until }
 }
 
+# ---------- 卸载守卫 ----------
+# 强制模式期间不允许卸载(防破戒): 开着强制模式 = 自己下的承诺, 承诺期内不能把整套东西拆掉。
+# 判据与强制模式本身同源("双保险"), 任一来源显示"开着"就拦:
+#   1) config.force.enabled
+#   2) force-state.json 存在 (= 曾合法开启且未经面板合法关闭)
+# 于是"手改 config.json 把 force.enabled 改成 false 再卸载"这条绕过路径也被挡住。
+# 返回 @{ blocked; reason = off|force-active|force-on|force-residue; active; until; msg }
+function Get-AfsUninstallBlock {
+    param([datetime]$Now = (Get-Date))
+    $res = @{ blocked = $false; reason = 'off'; active = $false; until = $null; msg = '' }
+    $cfg = $null
+    try { $cfg = Get-AfsConfig } catch { return $res }   # 配置都读不出来 => 强制模式本来没在跑, 不必拦(避免卸载被永久卡死)
+    $cfgOn   = [bool]$cfg.force.enabled
+    $stateOn = Test-Path (Get-AfsForceStatePath)
+    if (-not $cfgOn -and -not $stateOn) { return $res }
+
+    $fa = Test-AfsForceActive -Config $cfg -Now $Now
+    $res.blocked = $true
+    $res.active  = [bool]$fa.active
+    if ($fa.until) { $res.until = ([datetime]$fa.until).ToString('HH:mm') }
+
+    if ($fa.active) {
+        $res.reason = 'force-active'
+        $res.msg = "强制模式正在生效中(当前位于屏蔽时段), 已阻止卸载, 程序文件 / 计划任务 / hosts 全部保持原样。请等本次屏蔽时段结束后, 在面板「状态 / 屏蔽计划」页关闭强制模式, 再执行卸载。"
+    } elseif ($cfgOn) {
+        $res.reason = 'force-on'
+        $res.msg = "强制模式已开启(所选星期的屏蔽时段内长期强制), 已阻止卸载, 程序文件 / 计划任务 / hosts 全部保持原样。请先在面板「状态 / 屏蔽计划」页关闭强制模式(非屏蔽时段可关), 再执行卸载。"
+    } else {
+        $res.reason = 'force-residue'
+        $res.msg = "检测到强制模式状态文件(force-state.json)尚未清除, 为防绕过已阻止卸载。请到面板「状态 / 屏蔽计划」页关闭一次强制模式以清理状态, 再执行卸载。"
+    }
+    $res
+}
+
 # ---------- 计划判定 ----------
 
 function ConvertTo-AfsMinutes { param([string]$HHmm)
@@ -1259,8 +1293,10 @@ function Invoke-AfsEnforce {
     $forceActive = Test-AfsForceActive -Config $Config
     if ($forceActive.active) {
         # 生效中: 补齐独立状态文件 (防手改 json / 删文件破戒)
+        # 注意 until 可能为 $null(长期模式), 直接 .ToString() 会抛异常 -> 那样删掉状态文件就修补不回来了
         if (-not (Test-Path (Get-AfsForceStatePath))) {
-            Save-AfsForceState -Until $forceActive.until.ToString('o')
+            $untilStr = if ($forceActive.until) { ([datetime]$forceActive.until).ToString('o') } else { $null }
+            Save-AfsForceState -Until $untilStr
         }
     } elseif ($Config.force.enabled) {
         # 未生效: 仅旧式单次强制(until 非空且已跨天过期)自动关闭;

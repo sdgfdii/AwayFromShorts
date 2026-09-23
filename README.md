@@ -77,6 +77,12 @@ irm https://raw.githubusercontent.com/sdgfdii/AwayFromShorts/main/install.ps1 | 
 
 卸载会: 删除计划任务 → 恢复 hosts(只移除本程序写入的行)→ 删除程序目录。
 
+> **🔒 强制模式期间无法卸载**
+> 只要强制模式处于开启状态(面板「状态」页的总开关), 卸载会被拒绝 —— 面板按钮变灰, 直接运行
+> `uninstall.bat` 也会被同一个卸载脚本拦下, 且**不会改动任何文件**(计划任务 / hosts / 程序目录原样保留)。
+> 判据同时看 `config.json` 与 `force-state.json` 两个来源, 所以手改配置也绕不过去。
+> 想卸载: 先在**非屏蔽时段**到面板关闭强制模式, 再执行卸载。
+
 ## ⚙️ 工作原理
 
 ```

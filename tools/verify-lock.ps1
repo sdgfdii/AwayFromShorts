@@ -340,6 +340,89 @@ CheckBool '原白名单项仍保留' $true (@($after.whitelist.sites) -contains 
 
 Remove-Item -LiteralPath $qdir -Recurse -Force -ErrorAction SilentlyContinue
 
+# ---------------------------------------------------------------
+# F. 卸载守卫: 强制模式期间不允许卸载 (同样用临时目录, 不碰真实 config.json)
+# ---------------------------------------------------------------
+Write-Host ''
+Write-Host '--- F. uninstall blocked while force mode is on ---'
+
+$udir = Join-Path $env:TEMP ('afs-verify-uninst-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+New-Item -ItemType Directory -Force -Path $udir | Out-Null
+Set-AfsConfigPath -Path (Join-Path $udir 'config.json')
+
+# F1. 强制开启 + 当前正处于屏蔽时段 -> 拦, 原因 force-active
+$uc = Get-AfsDefaultConfig
+$uc.force.enabled    = $true
+$uc.schedule.days    = @(1, 2, 3, 4, 5, 6, 7)
+$uc.schedule.windows = @(@{ start = '00:00'; end = '23:59' })   # 全天窗口 -> 必然生效中
+Set-AfsConfigSafe -InputConfig $uc | Out-Null
+Save-AfsForceState -Until $null          # 与面板 /api/force 开启时一致: 写独立状态文件(双保险来源2)
+$g1 = Get-AfsUninstallBlock
+CheckBool '生效时段内 -> 禁止卸载' $true $g1.blocked
+CheckBool '生效时段内 -> 原因 force-active' $true ($g1.reason -eq 'force-active')
+CheckBool '生效时段内 -> 给出可操作文案' $true ($g1.msg -like '*关闭强制模式*')
+
+# F2. 强制开启但当前不在生效时段(窗口外) -> 仍然拦(开着强制模式就是"期间")
+$uc2 = Get-AfsConfig
+$uc2.schedule.windows = @(@{ start = '00:00'; end = '00:01' })   # 已过去的 1 分钟 -> 非生效时段
+Set-AfsConfigSafe -InputConfig $uc2 | Out-Null
+$g2 = Get-AfsUninstallBlock
+CheckBool '非生效时段但强制开着 -> 仍然禁止卸载' $true $g2.blocked
+CheckBool '非生效时段 -> 原因 force-on' $true ($g2.reason -eq 'force-on')
+CheckBool '非生效时段 -> 提示先关强制模式' $true ($g2.msg -like '*关闭强制模式*')
+
+# F3. 手改 config.json 把 force.enabled 改成 false (模拟绕过) -> 状态文件仍在, 仍然拦
+$uc3 = Get-AfsConfig
+$uc3.force.enabled = $false
+Write-AfsJson -Path (Get-AfsConfigPath) -Object $uc3
+CheckBool '前提: config 已被改成未开启' $false ([bool](Get-AfsConfig).force.enabled)
+CheckBool '前提: force-state.json 仍在' $true (Test-Path (Get-AfsForceStatePath))
+$g3 = Get-AfsUninstallBlock
+CheckBool '手改 config 绕过 -> 仍禁止卸载' $true $g3.blocked
+CheckBool '手改 config 绕过 -> 原因 force-residue' $true ($g3.reason -eq 'force-residue')
+
+# F4. 状态文件也清掉 + config 关掉 -> 放行(不能把卸载永久卡死)
+Remove-Item (Get-AfsForceStatePath) -Force -ErrorAction SilentlyContinue
+$g4 = Get-AfsUninstallBlock
+CheckBool '两来源都清掉 -> 允许卸载' $false $g4.blocked
+CheckBool '两来源都清掉 -> 原因 off' $true ($g4.reason -eq 'off')
+
+# F5. 从未开启强制模式的全新安装 -> 放行
+$udir2 = Join-Path $env:TEMP ('afs-verify-uninst2-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+New-Item -ItemType Directory -Force -Path $udir2 | Out-Null
+Set-AfsConfigPath -Path (Join-Path $udir2 'config.json')
+Set-AfsConfigSafe -InputConfig (Get-AfsDefaultConfig) | Out-Null
+$g5 = Get-AfsUninstallBlock
+CheckBool '全新安装(强制未开) -> 允许卸载' $false $g5.blocked
+
+# F6. 生效中删掉 force-state.json -> 引擎应把它补回来且不报错(长期模式 until 为 $null)
+$uc6 = Get-AfsDefaultConfig
+$uc6.force.enabled    = $true
+$uc6.schedule.days    = @(1, 2, 3, 4, 5, 6, 7)
+$uc6.schedule.windows = @(@{ start = '00:00'; end = '23:59' })
+Set-AfsConfigSafe -InputConfig $uc6 | Out-Null
+Remove-Item (Get-AfsForceStatePath) -Force -ErrorAction SilentlyContinue
+$enforceErr = ''
+try { $null = Invoke-AfsEnforce -Config (Get-AfsConfig) -HostsPath (Join-Path $udir2 'fake-hosts') -Simulate } catch { $enforceErr = $_.Exception.Message }
+CheckBool '生效中删状态文件 -> 引擎不报错' $true ([string]::IsNullOrEmpty($enforceErr))
+CheckBool '生效中删状态文件 -> 被自动补回' $true (Test-Path (Get-AfsForceStatePath))
+
+# F7. 卸载脚本收口: 守卫必须存在于脚本里, 且位置早于任何删除动作
+$unPath = Join-Path (Split-Path $PSScriptRoot -Parent) 'src\uninstall.ps1'
+$unText = [System.IO.File]::ReadAllText($unPath, [System.Text.Encoding]::UTF8)
+$iGuard = $unText.IndexOf('Get-AfsUninstallBlock')
+$iElev  = $unText.IndexOf('Get-AfsIsAdmin')
+$iDelTask = $unText.IndexOf('schtasks /Delete')
+$iDelDir  = $unText.IndexOf('rmdir /s /q')
+CheckBool '卸载脚本: 含守卫调用' $true ($iGuard -ge 0)
+CheckBool '卸载脚本: 守卫在提权之前' $true ($iGuard -ge 0 -and $iGuard -lt $iElev)
+CheckBool '卸载脚本: 守卫在删除计划任务之前' $true ($iGuard -ge 0 -and $iGuard -lt $iDelTask)
+CheckBool '卸载脚本: 守卫在删除程序目录之前' $true ($iGuard -ge 0 -and $iGuard -lt $iDelDir)
+CheckBool '卸载脚本: 命中即 exit 1' $true ($unText -like "*exit 1*")
+
+Remove-Item -LiteralPath $udir  -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath $udir2 -Recurse -Force -ErrorAction SilentlyContinue
+
 Write-Host ''
 if ($script:bad) {
     Write-Host ("RESULT: FAIL (" + $script:bad + " case(s))")

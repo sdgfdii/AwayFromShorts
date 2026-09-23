@@ -1275,10 +1275,11 @@
       <div class="card">
         <h3>🗑 卸载</h3>
         <div class="note danger">卸载会删除计划任务、恢复 hosts 文件(仅移除本程序写入的行)、删除程序目录。你的其他文件不受影响。</div>
+        <div class="red-note" id="uninstallLockNote" style="display:none;margin-top:10px"></div>
         <div class="btn-row">
           <button class="btn red" id="uninstallBtn">一键卸载 AwayFromShorts</button>
         </div>
-        <div class="note">也可以手动运行 <code>%LOCALAPPDATA%\AwayFromShorts\uninstall.bat</code>(需管理员)。</div>
+        <div class="note" id="uninstallManualNote">也可以手动运行 <code>%LOCALAPPDATA%\AwayFromShorts\uninstall.bat</code>(需管理员)。</div>
       </div>
     </section>
   </main>
@@ -1447,6 +1448,7 @@ async function load() {
     status = s.value;
     if (s.value.version) { $("#verTag").textContent = s.value.version; $("#aboutVer").textContent = "v" + s.value.version; }
     renderTop();
+    renderUninstallGuard();
   }
   // 首页/状态页同时依赖 cfg(整卡配色与开关状态) 与 status, 缺一个就等下一轮, 避免渲染中途抛错中断
   if (cfg && status) { renderHome(); renderStatus(); }
@@ -2716,7 +2718,7 @@ async function refreshStatus(silent) {
     autoFail = 0;
     const qBefore = (pendingInfo && pendingInfo.total) || 0;
     const qAfter = (status.pending && status.pending.total) || 0;
-    renderTop(); renderHome(); renderStatus();
+    renderTop(); renderHome(); renderStatus(); renderUninstallGuard();
     // 队列数变了 = 引擎在非屏蔽时段把排队内容落地了(或又有新的排队) -> 重新拉配置对齐
     if (qBefore !== qAfter) {
       if (dirty) {
@@ -2935,8 +2937,34 @@ $("#syncAutoSwitch").addEventListener("change", async e => {
   }
 });
 
+// 卸载守卫: 强制模式期间禁用卸载按钮(真拦在后端, 这里只做可见性与即时反馈)
+function renderUninstallGuard() {
+  const btn = $("#uninstallBtn");
+  if (!btn) return;
+  const blocked = !!(status && status.uninstallBlocked);
+  const msg = (status && status.uninstallMsg) || "强制模式开启期间不允许卸载。";
+  btn.disabled = blocked;
+  btn.title = blocked ? msg : "";
+  const tip = $("#uninstallLockNote");
+  if (tip) {
+    tip.style.display = blocked ? "" : "none";
+    tip.textContent = blocked ? "🔒 " + msg : "";
+  }
+  const man = $("#uninstallManualNote");
+  if (man) {
+    man.innerHTML = blocked
+      ? "手动运行 <code>uninstall.bat</code> 也一样会被拦下(同一个卸载脚本里还有一道硬校验)。"
+      : "也可以手动运行 <code>%LOCALAPPDATA%\\AwayFromShorts\\uninstall.bat</code>(需管理员)。";
+  }
+}
+
 // 卸载
 $("#uninstallBtn").addEventListener("click", async () => {
+  // 二次守卫: 即使绕过 disabled 强行派发点击, 在这里也走不出去
+  if (status && status.uninstallBlocked) {
+    toast((status.uninstallMsg || "强制模式开启期间不允许卸载"), "err");
+    return;
+  }
   if (!confirm("确定要卸载 AwayFromShorts 吗?\n\n将删除计划任务、恢复 hosts 文件、删除程序目录。")) return;
   try {
     const r = await api("/api/uninstall", "POST", {});
