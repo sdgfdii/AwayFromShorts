@@ -5,7 +5,7 @@
 # ============================================================
 
 $script:AFS_NAME        = 'AwayFromShorts'
-$script:AFS_VERSION     = '1.3.7'
+$script:AFS_VERSION     = '1.4.0'
 $script:AFS_MARK_START  = "# >>> $($script:AFS_NAME) >>> (managed by AwayFromShorts - do not edit)"
 $script:AFS_MARK_END    = "# <<< $($script:AFS_NAME) <<<"
 # 这些进程永远不杀,防止把系统/本工具自己弄死
@@ -844,6 +844,9 @@ function Set-AfsHostsBlock {
     } else {
         $newText = $clean
     }
+    # 内容没变就不写盘: 引擎每分钟都会跑到这里, 跳过相同内容可避免对系统 hosts 的无谓写入
+    # (自愈能力不受影响 —— 块被人删掉时 newText != text, 仍会重写)
+    if ($newText -ceq $text) { return }
     $utf8 = New-Object System.Text.UTF8Encoding($false)
     [System.IO.File]::WriteAllText($Path, $newText, $utf8)
 }
@@ -852,8 +855,10 @@ function Remove-AfsHostsBlock {
     param([string]$Path)
     $text  = Get-AfsHostsText -Path $Path
     $clean = Remove-AfsHostsBlockFromText -Text $text
+    $newText = $clean + "`r`n"
+    if ($newText -ceq $text) { return }   # 没有块需要移除且格式一致 -> 不写盘
     $utf8  = New-Object System.Text.UTF8Encoding($false)
-    [System.IO.File]::WriteAllText($Path, $clean + "`r`n", $utf8)
+    [System.IO.File]::WriteAllText($Path, $newText, $utf8)
 }
 
 # ---------- 进程 ----------
@@ -990,6 +995,10 @@ $script:AFS_ACTIVITY_KEEP  = 60
 function Get-AfsActivityPath { (Join-Path (Split-Path (Get-AfsConfigPath)) $script:AFS_ACTIVITY_FILE) }
 
 function Read-AfsActivity {
+    param([switch]$Force)
+    # 进程内缓存优先: activity.json 的唯一写入方就是本进程(面板采样), 缓存即权威数据。
+    # 面板长驻, 每分钟采样 + 每次统计页请求都会读它, 缓存优先可省掉全部重复磁盘读取。
+    if (-not $Force -and $script:afsActivityCache) { return $script:afsActivityCache }
     $p = Get-AfsActivityPath
     if (Test-Path $p) {
         try {
@@ -1036,16 +1045,17 @@ $script:AFS_SITE_WORDS = @('bilibili','youtube','douyin','tiktok','instagram','k
 function Invoke-AfsActivitySample {
     $a = Read-AfsActivity
     $today = (Get-Date).ToString('yyyy-MM-dd')
+    # 离开 / 无前台窗口 / 取不到进程时数据没有任何变化 —— 直接返回, 不再每分钟把整份 json 重写一遍
     if (-not $a.days.ContainsKey($today)) { $a.days[$today] = @{ apps = @{}; sites = @{} } }
-    if ((Get-AfsIdleSeconds) -gt 180) { Save-AfsActivity $a; return }
+    if ((Get-AfsIdleSeconds) -gt 180) { return }
     $hwnd = [AfsWin32.Native]::GetForegroundWindow()
-    if ($hwnd -eq [IntPtr]::Zero) { Save-AfsActivity $a; return }
+    if ($hwnd -eq [IntPtr]::Zero) { return }
     $wp = [uint32]0
     [void][AfsWin32.Native]::GetWindowThreadProcessId($hwnd, [ref]$wp)
     $proc = Get-Process -Id $wp -ErrorAction SilentlyContinue
-    if (-not $proc) { Save-AfsActivity $a; return }
+    if (-not $proc) { return }
     $app = $proc.ProcessName
-    if (-not $app) { Save-AfsActivity $a; return }
+    if (-not $app) { return }
     $title = ''
     try { $title = [string]$proc.MainWindowTitle } catch { }
     $d = $a.days[$today]
@@ -1167,6 +1177,14 @@ function Invoke-AfsBrowserWindowClose {
     # 用 wscript.exe + VBS 隐藏启动 (GUI 子系统, 无控制台窗口) —— 直接跑 powershell 即使 -WindowStyle Hidden
     # 控制台分配瞬间仍会闪黑窗, 这是"每分钟闪弹窗"的根因
     $vbsPath = Join-Path (Split-Path (Get-AfsConfigPath)) 'close-browser.vbs'
+    # 任务已存在就不重建: 引擎活跃期每分钟都会走到这里, 每分钟重写 XML + /Create /F 纯属浪费
+    # (任务被删掉时查询失败 -> 照样重建, 自愈能力保留)
+    $taskExists = $false
+    try {
+        $q = schtasks /Query /TN $script:AFS_BROWSER_TASK 2>&1
+        $taskExists = (($q | Out-String) -notmatch 'ERROR|错误')
+    } catch { $taskExists = $false }
+    if (-not $taskExists) {
     # 用 XML 创建任务: 必须关闭电池限制 (DisallowStartIfOnBatteries/StopIfGoingOnBatteries=false),
     # 否则笔记本用电池时任务不启动, 窗口屏蔽会静默失效 (schtasks /SC ONCE 默认电池限制为 true)
     # InteractiveToken: 交互会话才能关闭桌面窗口; 不存密码
@@ -1214,6 +1232,10 @@ function Invoke-AfsBrowserWindowClose {
     $ErrorActionPreference = 'Continue'
     & schtasks /Create /F /TN $script:AFS_BROWSER_TASK /XML $xmlPath *> $null
     Remove-Item $xmlPath -Force -ErrorAction SilentlyContinue
+    $ErrorActionPreference = $prev
+    }
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
     & schtasks /Run /TN $script:AFS_BROWSER_TASK *> $null
     $ErrorActionPreference = $prev
 }
@@ -1366,16 +1388,28 @@ function Invoke-AfsEnforce {
 # ---------- 计划任务信息 ----------
 
 function Get-AfsTaskInfo {
+    # 30s TTL 缓存: /api/status 被面板每 20s 轮询, 每次都 spawn schtasks (100~300ms) 会拖慢单线程服务。
+    # 任务注册/卸载是低频操作, 30s 内的状态滞后可接受。
+    $nowSec = [int][DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+    if ($script:afsTaskInfoCache -and ($nowSec - [int]$script:afsTaskInfoCacheAt) -lt 30) {
+        return $script:afsTaskInfoCache
+    }
     $ErrorActionPreference = 'Continue'   # 任务不存在时 schtasks 会写 stderr, 不能被 Stop 变成终止错误
     $out = schtasks /Query /TN "AwayFromShorts" 2>&1
     $text = ($out | Out-String)
-    if ($text -match 'ERROR|错误') { return @{ exists = $false } }
+    if ($text -match 'ERROR|错误') {
+        $script:afsTaskInfoCache = @{ exists = $false }
+        $script:afsTaskInfoCacheAt = $nowSec
+        return $script:afsTaskInfoCache
+    }
     $status = 'unknown'
     foreach ($line in $out) {
         if ($line -match '^\s*(正在运行|Running)' -or $line -match '正在运行') { $status = 'running'; break }
         if ($line -match '^\s*(就绪|Ready)') { $status = 'ready' }
     }
-    @{ exists = $true; status = $status }
+    $script:afsTaskInfoCache = @{ exists = $true; status = $status }
+    $script:afsTaskInfoCacheAt = $nowSec
+    $script:afsTaskInfoCache
 }
 
 # ---------- 云同步 (GitHub Gist) ----------

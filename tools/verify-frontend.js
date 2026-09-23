@@ -31,7 +31,7 @@ blocks.forEach((code, i) => {
 const markers = [
   ["请求超时常量 API_TIMEOUT", /const API_TIMEOUT = 15000;/],
   ["只读请求自动重试", /_attempt < 1/],
-  ["保存按钮 finally 恢复", /finally \{ btn\.disabled = false; \}/],
+  ["保存按钮 finally 恢复(含文案)", /finally \{ btn\.disabled = false; btn\.textContent = oldTxt; \}/],
   ["原生控件深色 color-scheme", /color-scheme: dark;/],
   ["自动刷新周期 20s", /const AUTO_REFRESH_MS = 20000;/],
   ["自动刷新挂载", /setInterval\(autoRefresh, AUTO_REFRESH_MS\);/],
@@ -49,6 +49,14 @@ const markers = [
   ["统计: 视图切换补拉 activity", /if \(statsNeedsActivity\(\) && Date\.now\(\) - actLast > 20000\)/],
   ["统计: 首屏先落 activity 再渲染", /activity = act\.value\.activity; actLast = Date\.now\(\);\s*\}\s*if \(st\.status === "fulfilled" && st\.value\) stats = st\.value\.stats;/],
   ["断线提示", /面板无响应/],
+  // v1.4.0 优化: 稳定性/性能守卫
+  ["倒计时后台暂停", /if \(!homeCountdown \|\| document\.hidden\) return;/],
+  ["状态操作防连点 actBusy", /let actBusy = false;/],
+  ["状态操作不强制拉 activity", /Promise\.all\(\[refreshStatus\(\), refreshStats\(true\)\]\)/],
+  ["队列落地不覆盖未保存编辑", /if \(dirty\) \{\s*\/\/ 表单里有未保存的编辑/],
+  ["统计重试后台/离页即停", /if \(document\.hidden \|\| !panelActive\) \{ statsAttempt = 0; return; \}/],
+  ["手动重连取消排队重试", /clearTimeout\(bootTimer\); bootTimer = null; bootAttempt = 0;/],
+  ["ensureBrowser 兜底函数", /function ensureBrowser\(\)/],
   ["减少动效降级", /@media \(prefers-reduced-motion: reduce\)/],
   ["侧边栏 <nav> 语义", /<nav class="sidebar" aria-label="主导航">/],
   ["role=tablist", /role="tablist" aria-orientation="vertical"/],

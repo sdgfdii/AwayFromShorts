@@ -227,42 +227,6 @@
   a { color: var(--accent); }
 
   /* ---------- 统计页 ---------- */
-  .stat-hero { display: flex; gap: 16px; align-items: stretch; flex-wrap: wrap; }
-  .hero-main {
-    flex: 1 1 230px; border-radius: 12px; padding: 18px 22px;
-    background: linear-gradient(135deg, rgba(255,93,93,.16), rgba(255,171,61,.07));
-    border: 1px solid rgba(255,93,93,.35); position: relative; overflow: hidden;
-  }
-  .hero-main::after {
-    content: ""; position: absolute; right: -30px; top: -30px; width: 120px; height: 120px;
-    background: radial-gradient(circle, rgba(255,93,93,.25), transparent 70%); pointer-events: none;
-  }
-  .hero-main.clean { background: linear-gradient(135deg, rgba(52,199,123,.14), rgba(79,140,255,.06)); border-color: rgba(52,199,123,.35); }
-  .hero-main.clean::after { background: radial-gradient(circle, rgba(52,199,123,.22), transparent 70%); }
-  .hero-label { font-size: 12.5px; color: var(--muted); letter-spacing: 1px; }
-  .hero-count { font-size: 50px; font-weight: 800; line-height: 1.15; color: var(--red); }
-  .hero-main.clean .hero-count { color: var(--green); }
-  .hero-count .unit { font-size: 17px; font-weight: 600; color: var(--muted); margin-left: 6px; }
-  .hero-dur { font-size: 13.5px; color: var(--text); margin-top: 2px; font-weight: 600; }
-  .hero-sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
-  .hero-metrics { flex: 2 1 300px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-  .hero-metric {
-    background: var(--panel2); border: 1px solid var(--border); border-radius: 12px;
-    padding: 12px 14px; display: flex; flex-direction: column; justify-content: center; min-width: 0;
-  }
-  .hero-metric .k { font-size: 11px; color: var(--muted); }
-  .hero-metric .v { font-size: 16px; font-weight: 700; margin-top: 3px; line-height: 1.3; word-break: break-all; }
-  .hero-metric .v.red { color: var(--red); }
-  .stat-live {
-    display: none; margin-top: 14px; padding: 11px 15px; border-radius: 10px; font-size: 13px; line-height: 1.6;
-    background: linear-gradient(90deg, rgba(255,93,93,.18), rgba(255,171,61,.1));
-    border: 1px solid rgba(255,93,93,.55); color: #ffd9d9;
-    animation: statLivePulse 1.8s ease-in-out infinite;
-  }
-  @keyframes statLivePulse {
-    0%, 100% { border-color: rgba(255,93,93,.55); box-shadow: 0 0 0 0 rgba(255,93,93,.16); }
-    50% { border-color: rgba(255,93,93,.95); box-shadow: 0 0 16px 3px rgba(255,93,93,.22); }
-  }
   .bar-list { display: block; }
   .bar-row {
     display: grid; grid-template-columns: 118px 1fr 148px; gap: 12px; align-items: center;
@@ -292,8 +256,6 @@
     .nav-list { flex-direction: row; }
     .nav-item { white-space: nowrap; width: auto; }
     .status-grid { grid-template-columns: 1fr; }
-    .stat-hero { flex-direction: column; }
-    .hero-metrics { grid-template-columns: repeat(3, 1fr); }
     .bar-row { grid-template-columns: 1fr; gap: 4px; padding: 9px 0; }
     .bar-val { text-align: left; }
     .ev-row { flex-wrap: wrap; }
@@ -715,7 +677,7 @@
   /* 4.4 呼吸/流动: 让静止的大色块有生命 */
   @keyframes breathe { 0%,100% { opacity: .5; transform: translate(0,0) scale(1); } 50% { opacity: .8; transform: translate(-14px, 10px) scale(1.08); } }
   .home-hero::after { animation: breathe 9s ease-in-out infinite; }
-  .vb .hero .glow, .hero-main::after { animation: breathe 11s ease-in-out infinite; }
+  .vb .hero .glow { animation: breathe 11s ease-in-out infinite; }
   @keyframes logoSheen { 0% { background-position: 0% 50%; } 100% { background-position: 200% 50%; } }
   .brand .logo { background-size: 200% 200%; animation: logoSheen 6s linear infinite; }
   @keyframes livePulse { 0%,100% { opacity: 1; } 50% { opacity: .55; } }
@@ -1401,7 +1363,8 @@ function bootRetry() {
   const wait = Math.min(1000 * bootAttempt, 5000);
   bootTimer = setTimeout(async () => {
     bootTimer = null;
-    const r = await load();
+    let r;
+    try { r = await load(); } catch (e) { r = { ok: false }; }   // 渲染异常视同失败, 重试链不能断
     if (r.ok) { bootAttempt = 0; playPanelEnter($(".panel.active")); }
     else { setPill("🔌 面板未就绪 · 自动重试中(" + bootAttempt + ")", "err"); bootRetry(); }
   }, wait);
@@ -1414,10 +1377,15 @@ if (topPillEl) {
   topPillEl.title = "点击可重新连接面板";
   topPillEl.addEventListener("click", async () => {
     if (cfg && status) { toast("面板连接正常", "ok"); return; }
-    setPill("⏳ 正在连接面板…", "off");
-    bootTimer = null; bootAttempt = 0;
-    const r = await load();
-    if (r.ok) toast("面板已连接", "ok"); else { setPill("🔌 面板未就绪 · 自动重试中", "err"); bootRetry(); }
+    if (topPillEl.dataset.busy) return;          // 连点不并发多个 load()
+    topPillEl.dataset.busy = "1";
+    try {
+      setPill("⏳ 正在连接面板…", "off");
+      clearTimeout(bootTimer); bootTimer = null; bootAttempt = 0;   // 真正取消已排队的自动重试
+      let r;
+      try { r = await load(); } catch (e) { r = { ok: false }; }
+      if (r.ok) toast("面板已连接", "ok"); else { setPill("🔌 面板未就绪 · 自动重试中", "err"); bootRetry(); }
+    } finally { delete topPillEl.dataset.busy; }
   });
 }
 
@@ -1616,7 +1584,7 @@ function fmtCountdown(ms) {
 }
 
 setInterval(() => {
-  if (!homeCountdown) return;
+  if (!homeCountdown || document.hidden) return;   // 页面在后台不刷倒计时(省电省重排)
   const cn = $("#homeCountNum");
   if (!cn) return;
   if (homeCountdown.target) {
@@ -1665,8 +1633,7 @@ function renderForce() {
   const f = cfg.force || {};
   const fa = $("#forceArea");
   const forced = status && status.activeReason === "force";
-  const WD = ["", "周一", "周二", "周三", "周四", "周五", "周六", "周日"];
-  const wdTxt = s => s.length >= 7 ? "每天" : s.map(d => WD[d]).join("、");
+  const wdTxt = s => s.length >= 7 ? "每天" : s.map(d => WD_CN[d]).join("、");
   const wdShow = wd => { const a = (wd || []).filter(x => x); return a.length ? wdTxt(a) : "跟随屏蔽计划"; };
   const fWds = f.weekdays || [];
   if (f.enabled && forced) {
@@ -1692,7 +1659,7 @@ function renderForce() {
   }
   let wdSel = (cfg.schedule && cfg.schedule.days && cfg.schedule.days.length) ? cfg.schedule.days.slice() : [1, 2, 3, 4, 5, 6, 7];
   const prevHtml = () => `🔒 开启后: <b>${wdTxt(wdSel)}</b> 的屏蔽时段内长期强制(星期循环, 无到期日); 强制中不可关闭, 窗口外 / 非所选星期可手动停用`;
-  const wdChips = WD.slice(1).map((n, i) => `<button class="chip${wdSel.indexOf(i + 1) >= 0 ? " on" : ""}" data-wd="${i + 1}">${n}</button>`).join("");
+  const wdChips = WD_CN.slice(1).map((n, i) => `<button class="chip${wdSel.indexOf(i + 1) >= 0 ? " on" : ""}" data-wd="${i + 1}">${n}</button>`).join("");
   fa.innerHTML =
     `<div class="hint">开启后<b>仅在所选星期的屏蔽时段内强制</b>: 强制中<b>无法提前关闭</b>(防破戒), 非强制时段可手动关闭。长期有效直到你停用(按星期循环, 无到期日)。</div>` +
     `<div class="fd-row"><span class="hint" style="margin:0">📅 强制星期:</span><div class="chips" id="forceWdChips" style="margin-top:2px">${wdChips}</div></div>` +
@@ -1744,8 +1711,14 @@ function renderSites() {
   applyLockNote("#sitesLockNote", locked, "「屏蔽网页」(域名名单 / 网站屏蔽总开关 / Edge 工作区 / 浏览器拦截开关)");
 }
 
-function renderBrowser() {
+// 浏览器配置的默认值兜底: 旧配置可能没有 browser 字段
+function ensureBrowser() {
   if (!cfg.browser) cfg.browser = { enabled: true, windows: [], urlBlock: false, targets: ["edge", "chrome"] };
+  return cfg.browser;
+}
+
+function renderBrowser() {
+  ensureBrowser();
   const ro = tightenOnly();
   $("#browserSwitch").checked = !!cfg.browser.enabled;
   $("#urlBlockSwitch").checked = !!cfg.browser.urlBlock;
@@ -1814,126 +1787,6 @@ function statFmtShort(min) {
   if (min < 60) return min + " 分";
   const h = Math.floor(min / 60), m = min % 60;
   return h + " 小时" + (m ? " " + m + " 分" : "");
-}
-
-function renderStats() {
-  const st = stats || { open: null, events: [] };
-  const evs = (st.events || []).slice().sort((a, b) => String(a.start) < String(b.start) ? -1 : 1);
-  const now = new Date();
-  const today = statDayStr(now);
-  const weekStart = statDayStr(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6));
-
-  // 聚合: 事件归属其 start 所在日
-  let todayN = 0, todayMin = 0, totalN = 0, totalMin = 0;
-  const weekMap = {};    // 日期 -> {n,min}
-  const monthMap = {};   // yyyy-MM -> {n,min}
-  const yearMap = {};    // yyyy -> {n,min}
-  const addTo = (map, k, min) => { if (!map[k]) map[k] = { n: 0, min: 0 }; map[k].n++; map[k].min += min; };
-  for (const e of evs) {
-    totalN++; totalMin += (e.min || 0);
-    const d = String(e.start).slice(0, 10);
-    if (d === today) { todayN++; todayMin += (e.min || 0); }
-    if (d >= weekStart && d <= today) addTo(weekMap, d, (e.min || 0));
-    addTo(monthMap, d.slice(0, 7), (e.min || 0));   // yyyy-MM
-    addTo(yearMap, d.slice(0, 4), (e.min || 0));    // yyyy
-  }
-
-  // 总览 hero
-  const sum = $("#statSummary");
-  const weekN = Object.values(weekMap).reduce((a, x) => a + x.n, 0);
-  const weekMin = Object.values(weekMap).reduce((a, x) => a + x.min, 0);
-  const curKey = today.slice(0, 7);
-  const curAgg = monthMap[curKey];
-  const clean = !todayN;
-  const heroCleanNote = todayN ? "" : `<div class="hero-sub">今天没有破戒，继续保持 👍</div>`;
-  sum.innerHTML =
-    `<div class="stat-hero">
-       <div class="hero-main ${clean ? "clean" : ""}">
-         <div class="hero-label">今日解除</div>
-         <div class="hero-count">${todayN}<span class="unit">次</span></div>
-         <div class="hero-dur">${todayMin ? "共 " + statFmtDur(todayMin) : "0 分钟"}</div>
-         ${heroCleanNote}
-       </div>
-       <div class="hero-metrics">
-         <div class="hero-metric"><div class="k">近 7 天</div><div class="v ${weekN ? "red" : ""}">${weekN} 次 · ${statFmtShort(weekMin)}</div></div>
-         <div class="hero-metric"><div class="k">本月 (${+curKey.slice(5)} 月)</div><div class="v ${curAgg && curAgg.n ? "red" : ""}">${curAgg ? curAgg.n + " 次 · " + statFmtShort(curAgg.min) : "0 次"}</div></div>
-         <div class="hero-metric"><div class="k">历史累计</div><div class="v ${totalN ? "red" : ""}">${totalN} 次 · ${statFmtShort(totalMin)}</div></div>
-       </div>
-     </div>`;
-
-  // 正在解除中
-  const live = $("#statLive");
-  if (st.open && st.open.start) {
-    let txt = "⏳ <b>正在临时解除中</b> — 自 " + esc(st.open.start) + " 开始，本次尚未结算，恢复屏蔽后自动计入统计。";
-    if (st.open.until) {
-      const u = new Date(st.open.until);
-      if (!isNaN(u)) txt += " 当前解除至 " + u.toLocaleString();
-    }
-    live.innerHTML = txt;
-    live.style.display = "block";
-  } else { live.style.display = "none"; live.innerHTML = ""; }
-
-  // ---------- 横向条形渲染 ----------
-  const barRows = (rows, maxMin, lg) => rows.map(r => {
-    const pct = r.min > 0 && maxMin > 0 ? Math.max(4, Math.round(r.min / maxMin * 100)) : 0;
-    return `<div class="bar-row${r.today ? " today" : ""}">
-      <div class="bar-label">${r.label}${r.tag ? `<span class="tag">${r.tag}</span>` : ""}</div>
-      <div class="bar-track${lg ? " lg" : ""}"><span class="bar-fill" style="width:${pct}%"></span></div>
-      <div class="bar-val${r.zero ? " zero" : ""}">${r.val}</div>
-    </div>`;
-  }).join("");
-  const statEmpty = t => `<div class="stat-empty">${t}</div>`;
-
-  // 近 7 天
-  const wkRows = [], wkMins = [];
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
-    const ds = statDayStr(d);
-    const agg = weekMap[ds];
-    const isToday = ds === today;
-    wkRows.push({
-      label: ds.slice(5) + " " + DAY_NAMES[d.getDay()], tag: isToday ? "今天" : "", today: isToday,
-      min: agg ? agg.min : 0,
-      val: agg ? `${agg.n} 次 · ${statFmtShort(agg.min)}` : "无解除", zero: !agg,
-    });
-    if (agg) wkMins.push(agg.min);
-  }
-  $("#statWeek").innerHTML = barRows(wkRows, Math.max(1, ...wkMins));
-
-  // 近 12 个月(有记录的月份, 倒序)
-  const mk = Object.keys(monthMap).sort().reverse().slice(0, 12);
-  const mMins = mk.map(k => monthMap[k].min);
-  $("#statMonths").innerHTML = mk.length
-    ? barRows(mk.map(k => {
-        const a = monthMap[k];
-        return {
-          label: k.slice(0, 4) + " 年 " + (+k.slice(5)) + " 月", tag: k === today.slice(0, 7) ? "本月" : "",
-          today: k === today.slice(0, 7), min: a.min,
-          val: `${a.n} 次 · ${statFmtShort(a.min)}`,
-        };
-      }), Math.max(1, ...mMins))
-    : statEmpty("暂无按月记录 — 点过「临时解除」后按自然月汇总");
-
-  // 按年
-  const yk = Object.keys(yearMap).sort().reverse();
-  const yMins = yk.map(k => yearMap[k].min);
-  $("#statYears").innerHTML = yk.length
-    ? barRows(yk.map(k => {
-        const a = yearMap[k];
-        return { label: k + " 年", min: a.min, val: `${a.n} 次 · ${statFmtShort(a.min)}` };
-      }), Math.max(1, ...yMins), true)
-    : statEmpty("暂无按年记录");
-
-  // 最近记录(倒序)
-  const recent = evs.slice(-15).reverse();
-  $("#statRecent").innerHTML = recent.length ? recent.map(e => {
-    const s = String(e.start), t = String(e.end);
-    const sameDay = s.slice(0, 10) === t.slice(0, 10);
-    return `<div class="ev-row">
-      <span class="ev-time">${esc(s.slice(5))}<span class="arr">→</span>${esc(sameDay ? t.slice(11, 16) : t.slice(5, 16))}</span>
-      <span class="ev-badge">${statFmtDur(e.min)}</span>
-    </div>`;
-  }).join("") : statEmpty("暂无记录 — 点「临时解除」后会自动出现在这里");
 }
 
 /* ================= 统计 · 视图 (战报 / 应用使用) ================= */
@@ -2497,7 +2350,7 @@ $("#browserSwitch").addEventListener("change", e => {
     tightenToast("「工作区屏蔽」开关", "关掉就等于放行, 生效时段内只能保持开启");
     return;
   }
-  if (!cfg.browser) cfg.browser = { enabled: true, windows: [], urlBlock: false, targets: ["edge", "chrome"] };
+  ensureBrowser();
   cfg.browser.enabled = e.target.checked;
   markDirty();
 });
@@ -2507,16 +2360,16 @@ $("#urlBlockSwitch").addEventListener("change", e => {
     tightenToast("「网址拦截」开关", "关掉就等于放行, 生效时段内只能保持开启");
     return;
   }
-  if (!cfg.browser) cfg.browser = { enabled: true, windows: [], urlBlock: false, targets: ["edge", "chrome"] };
+  ensureBrowser();
   cfg.browser.urlBlock = e.target.checked;
   markDirty();
 });
 $("#addBrowserWinBtn").addEventListener("click", () => {
-  if (!cfg.browser) cfg.browser = { enabled: true, windows: [], urlBlock: false, targets: ["edge", "chrome"] };
+  ensureBrowser();
   addItem("#browserWinInput", () => cfg.browser.windows, "bwin");
 });
 $("#scanWinBtn").addEventListener("click", async () => {
-  if (!cfg.browser) cfg.browser = { enabled: true, windows: [], urlBlock: false, targets: ["edge", "chrome"] };
+  ensureBrowser();
   try {
     const r = await api("/api/browser/windows", "GET");
     const wins = r.windows || [];
@@ -2672,6 +2525,8 @@ $("#saveBtn").addEventListener("click", async () => {
   if (!cfg) return;
   const btn = $("#saveBtn");
   btn.disabled = true;
+  const oldTxt = btn.textContent;
+  btn.textContent = "保存中…";
   try {
     const r = await api("/api/config", "POST", cfg);
     cfg = r.config;
@@ -2688,7 +2543,7 @@ $("#saveBtn").addEventListener("click", async () => {
       catch (e) { toast("已保存, 但云端同步失败: " + e.message, "err"); }
     }
   } catch (e) { toast("保存失败: " + e.message, "err"); }
-  finally { btn.disabled = false; }
+  finally { btn.disabled = false; btn.textContent = oldTxt; }
 });
 
 // 状态操作
@@ -2702,8 +2557,14 @@ async function refreshStatus(silent) {
     renderTop(); renderHome(); renderStatus();
     // 队列数变了 = 引擎在非屏蔽时段把排队内容落地了(或又有新的排队) -> 重新拉配置对齐
     if (qBefore !== qAfter) {
-      await load();
-      if (!qAfter) toast("⏳ 排队的改动已在非屏蔽时段自动生效", "ok");
+      if (dirty) {
+        // 表单里有未保存的编辑: 不能用服务端配置整体覆盖(会静默丢弃用户改动), 只同步排队胶囊
+        pendingInfo = (status.pending && status.pending.total) ? status.pending : null;
+        renderPendingPill();
+      } else {
+        await load();
+        if (!qAfter) toast("⏳ 排队的改动已在非屏蔽时段自动生效", "ok");
+      }
     }
     return true;
   } catch (e) {
@@ -2737,12 +2598,17 @@ document.addEventListener("visibilitychange", () => {
   if (!document.hidden && Date.now() - autoLast > AUTO_REFRESH_MS) autoRefresh();
 });
 
+let actBusy = false;
 async function actAndRefresh(fn, okMsg) {
+  if (actBusy) return;   // 单线程后端下连点 = 排队重复执行(连点两次解除 = 两条 override)
+  actBusy = true;
   try {
     await fn();
     toast(okMsg || "已生效", "ok");
-    await Promise.all([refreshStatus(), refreshStats(true, true)]);
+    // battle 视图用不到 activity, 不强制拉(省一次单线程请求), 由 statsNeedsActivity() 按需决定
+    await Promise.all([refreshStatus(), refreshStats(true)]);
   } catch (e) { toast("操作失败: " + e.message, "err"); }
+  finally { actBusy = false; }
 }
 $("#applyBtn").addEventListener("click", async () => actAndRefresh(async () => { await api("/api/apply", "POST", {}); }, "已应用"));
 $("#blockNowBtn").addEventListener("click", async () => actAndRefresh(async () => { await api("/api/override", "POST", { mode: "block", minutes: 30 }); }, "已临时屏蔽 30 分钟"));
@@ -2877,6 +2743,9 @@ function statsScheduleRetry() {
   const wait = Math.min(2000 * statsAttempt, 10000);
   statsRetryTimer = setTimeout(() => {
     statsRetryTimer = null;
+    // 页面进了后台或已离开统计页: 不再继续重试打单线程后端(回前台后由 autoRefresh/visibilitychange 兜底)
+    const panelActive = $("#panel-stats") && $("#panel-stats").classList.contains("active");
+    if (document.hidden || !panelActive) { statsAttempt = 0; return; }
     refreshStats(true).then(ok => { if (!ok) statsScheduleRetry(); });
   }, wait);
 }
@@ -2929,7 +2798,7 @@ load().then(r => {
   if (r.ok) { playPanelEnter($("#panel-status")); return; }
   setPill("🔌 面板未就绪 · 自动重试中", "err");
   bootRetry();
-});
+}).catch(() => { setPill("🔌 面板未就绪 · 自动重试中", "err"); bootRetry(); });   // 渲染异常也进重试链, 不卡死首屏
 </script>
 </body>
 </html>

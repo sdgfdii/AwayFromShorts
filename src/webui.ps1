@@ -468,7 +468,8 @@ while (-not $script:AFS_STOP) {
             if ($script:AFS_STOP) { break }
         }
     } else {
-        Start-Sleep -Milliseconds 800
+        # 空闲轮询间隔: 越短请求延迟越低( worst case = 间隔时长 ), 150ms 下 CPU 占用仍可忽略
+        Start-Sleep -Milliseconds 150
         # 活动时间采样: 每 60 秒记录一次前台窗口 (面板在交互会话, 可访问桌面)
         $nowSec = [int][DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
         if (($nowSec - $script:AFS_LAST_SAMPLE) -ge 60) {
