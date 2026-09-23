@@ -142,6 +142,9 @@
   .preset.locked:hover { transform: none; border-color: var(--border); box-shadow: var(--sh-1); }
   .preset.locked input { cursor: not-allowed; }
   .list-item.locked .del-item { opacity: .35; cursor: not-allowed; pointer-events: none; }
+  /* 生效时段内「只能增不能删」: 卡片仍可点(用于新增), 但用琥珀色边框提示受限 */
+  .preset.tighten { border-color: rgba(255,176,32,.3); }
+  .preset.tighten:hover { border-color: rgba(255,176,32,.55); }
   .add-row.locked input, .add-row.locked .btn,
   .switch-row.locked .switch, .switch-row.locked input { opacity: .45; cursor: not-allowed; }
   input:disabled, button:disabled { cursor: not-allowed; }
@@ -878,7 +881,7 @@
       <h1 id="panelTitle">状态</h1>
       <div class="right">
         <span class="pill" id="topPill">加载中…</span>
-        <span class="pill queue" id="pendingPill" style="display:none" title="强制模式生效期间的名单改动会排队, 到非屏蔽时段自动生效">⏳ 待生效</span>
+        <span class="pill queue" id="pendingPill" style="display:none" title="强制模式生效期间只允许收紧(新增屏蔽项 / 打开屏蔽开关 / 减少白名单), 这些改动会排队到非屏蔽时段自动生效">⏳ 待生效</span>
         <button class="btn primary" id="saveBtn">💾 保存更改</button>
       </div>
     </div>
@@ -1298,6 +1301,16 @@ const DAY_LABELS = ["一","二","三","四","五","六","日"];
 const WD_CN = ["", "周一", "周二", "周三", "周四", "周五", "周六", "周日"];
 // 强制模式开启期间, 屏蔽星期锁定不可改 (防破戒: 改星期会让强制模式当天不生效)
 const forceLocked = () => !!(cfg && cfg.force && cfg.force.enabled);
+// 强制模式"生效时段内"的收紧开关: 只允许让屏蔽更严的方向, 不允许放宽。
+//   收紧(可排队) = 新增屏蔽项 / 打开屏蔽开关 / 删减白名单
+//   放宽(直接拒绝) = 删掉屏蔽项 / 关闭屏蔽开关 / 往白名单加项  <- 删掉就等于放行
+const tightenOnly = () => forceLocked() && forceActiveNow;
+// 放宽方向的操作提示: 说明"为什么不让做"和"什么时候能做"
+function tightenToast(what, why) {
+  toast(`🔒 强制模式生效中, ${what}只能收紧不能放宽 —— ${why}。想调整请等当前屏蔽时段结束后再操作。`, "err");
+}
+// 属于"屏蔽名单"的种类 (删掉 = 放宽); 白名单(wlsite/wlproc)方向相反, 不在表里
+const SHIELD_KIND = { site: "「屏蔽网页」域名", proc: "「屏蔽进程」", bwin: "「Edge 工作区」" };
 
 /* ---------- 排队中的改动 ----------
    强制模式生效时段内, 「屏蔽网页 / 屏蔽进程 / 白名单」的改动不再被拒绝, 而是由后端存成
@@ -1629,7 +1642,7 @@ function renderSchedule() {
       const fw = ((cfg.force || {}).weekdays || []).filter(x => x);
       const fwTxt = (!fw.length || fw.length >= 7) ? "每天" : fw.map(d => WD_CN[d]).join("、");
       ln.style.display = "";
-      ln.innerHTML = `🔒 <b>强制模式已开启</b>(强制星期: ${fwTxt}) — <b>「屏蔽星期」「屏蔽时段」已锁定, 无法修改</b>(防破戒: 改星期或时段会让强制模式当天失效)。「屏蔽网页 / 屏蔽进程 / 白名单」仍可编辑, 改动会<b>排队到非屏蔽时段自动生效</b>。想改星期或时段, 请先在上方「强制模式」卡片中<b>关闭强制模式</b>。`;
+      ln.innerHTML = `🔒 <b>强制模式已开启</b>(强制星期: ${fwTxt}) — <b>「屏蔽星期」「屏蔽时段」已锁定, 无法修改</b>(防破戒: 改星期或时段会让强制模式当天失效)。「屏蔽网页 / 屏蔽进程 / 白名单」${tightenOnly() ? "<b>只能新增, 不能删减</b>(白名单方向相反, 只能减少不能新增): 收紧的改动先排队、到非屏蔽时段自动生效, 放宽的改动会被直接拒绝" : "可自由编辑, 保存后立即生效"}。想改星期或时段, 请先在上方「强制模式」卡片中<b>关闭强制模式</b>。`;
     } else {
       ln.style.display = "none";
     }
@@ -1664,7 +1677,7 @@ function renderForce() {
   if (f.enabled) {
     fa.innerHTML =
       `<div class="note">🔒 <b>强制模式已开启</b>(星期循环): <b>${wdShow(fWds)}</b> 的屏蔽时段内自动强制。<br>当前<b>不在强制时段</b>(屏蔽窗口外或非所选星期), 可正常使用; 进入强制时段后将无法关闭, 直到时段结束。要停用请点下方按钮。</div>` +
-      `<div class="note warn" style="margin-top:8px">📅 强制模式开启期间<b>「屏蔽星期」「屏蔽时段」已锁定, 无法修改</b>(防破戒: 它们定义了何时算非屏蔽时段)。「屏蔽网页 / 屏蔽进程 / 白名单」仍可编辑, 改动会<b>排队到非屏蔽时段自动生效</b>。想改星期或时段, 请先点下方按钮关闭强制模式。</div>` +
+      `<div class="note warn" style="margin-top:8px">📅 强制模式开启期间<b>「屏蔽星期」「屏蔽时段」已锁定, 无法修改</b>(防破戒: 它们定义了何时算非屏蔽时段)。「屏蔽网页 / 屏蔽进程 / 白名单」<b>只能收紧不能放宽</b> —— 新增屏蔽项 / 打开屏蔽开关 / 减少白名单会排队到非屏蔽时段自动生效; 删屏蔽项 / 关屏蔽开关 / 加白名单在生效时段内会被<b>直接拒绝</b>。想改星期或时段, 请先点下方按钮关闭强制模式。</div>` +
       `<button class="btn danger" id="forceOffBtn">🔓 关闭强制模式</button>`;
     const off = $("#forceOffBtn");
     if (off) off.addEventListener("click", async () => {
@@ -1696,7 +1709,7 @@ function renderForce() {
   }));
   const on = $("#forceOnBtn");
   if (on) on.addEventListener("click", async () => {
-    if (!confirm("确定开启强制模式?\n\n开启后: 在所选星期(" + wdTxt(wdSel) + ")的屏蔽时段内长期强制:\n• 强制中无法关闭屏蔽 / 临时解除 / 清除临时设置 / 修改屏蔽星期 / 修改屏蔽时段\n• 强制中「屏蔽网页 / 屏蔽进程 / 白名单」仍可编辑, 但改动会排队到非屏蔽时段自动生效\n• 强制中无法从云端拉取配置(会覆盖本机名单)\n• 强制中无法提前关闭(防破戒)\n• 非强制时段(窗口外 / 非所选星期)可手动关闭\n\n⚠️ 想清楚再开——进入强制时段就无法反悔, 只能等时段结束。")) return;
+    if (!confirm("确定开启强制模式?\n\n开启后: 在所选星期(" + wdTxt(wdSel) + ")的屏蔽时段内长期强制:\n• 强制中无法关闭屏蔽 / 临时解除 / 清除临时设置 / 修改屏蔽星期 / 修改屏蔽时段\n• 强制中「屏蔽网页 / 屏蔽进程 / 白名单」只能收紧不能放宽:\n   - 排队生效: 新增屏蔽项 / 打开屏蔽开关 / 减少白名单\n   - 直接拒绝: 删屏蔽项 / 关屏蔽开关 / 加白名单\n• 强制中无法从云端拉取配置(会覆盖本机名单)\n• 强制中无法提前关闭(防破戒)\n• 非强制时段(窗口外 / 非所选星期)可手动关闭\n\n⚠️ 想清楚再开——进入强制时段就无法反悔, 只能等时段结束。")) return;
     try {
       const r = await api("/api/force", "POST", { enabled: true, weekdays: wdSel });
       toast(r.note || "强制模式已开启", "ok");
@@ -1712,10 +1725,11 @@ function presetState(preset, list) {
 
 function renderSites() {
   const locked = forceLocked();
+  const ro = tightenOnly();     // 强制生效时段内: 只能新增域名, 不能删
   $("#webSwitch").checked = !!cfg.blockWebsites;
   $("#sitePresets").innerHTML = SITE_PRESETS.map(p => {
     const st = presetState(p, cfg.blockedSites);
-    return `<div class="preset ${st.checked ? "checked" : ""}" data-preset="${esc(p.label)}">
+    return `<div class="preset ${st.checked ? "checked" : ""}${ro ? " tighten" : ""}" data-preset="${esc(p.label)}"${ro ? ' title="强制模式生效中: 可以勾选新增域名, 取消勾选(删域名)会被拒绝"' : ""}>
       <input type="checkbox" ${st.checked ? "checked" : ""}>
       <div><div class="t">${esc(p.label)}</div><div class="d">${esc(p.domains.join(" · "))}</div></div>
     </div>`;
@@ -1726,22 +1740,24 @@ function renderSites() {
     const st = presetState(p, cfg.blockedSites);
     if (st.mixed) el.querySelector("input").indeterminate = true;
   });
-  renderList("#siteList", cfg.blockedSites, "site");
+  renderList("#siteList", cfg.blockedSites, "site", ro, "强制模式生效中: 只能新增域名, 不能删除");
   applyLockNote("#sitesLockNote", locked, "「屏蔽网页」(域名名单 / 网站屏蔽总开关 / Edge 工作区 / 浏览器拦截开关)");
 }
 
 function renderBrowser() {
   if (!cfg.browser) cfg.browser = { enabled: true, windows: [], urlBlock: false, targets: ["edge", "chrome"] };
+  const ro = tightenOnly();
   $("#browserSwitch").checked = !!cfg.browser.enabled;
   $("#urlBlockSwitch").checked = !!cfg.browser.urlBlock;
-  renderList("#browserWinList", cfg.browser.windows, "bwin");
+  renderList("#browserWinList", cfg.browser.windows, "bwin", ro, "强制模式生效中: 只能新增工作区, 不能删除");
 }
 
 function renderProcesses() {
   const locked = forceLocked();
+  const ro = tightenOnly();
   $("#procPresets").innerHTML = PROC_PRESETS.map(p => {
     const st = presetState(p, cfg.blockedProcesses);
-    return `<div class="preset ${st.checked ? "checked" : ""}" data-preset="${esc(p.label)}">
+    return `<div class="preset ${st.checked ? "checked" : ""}${ro ? " tighten" : ""}" data-preset="${esc(p.label)}"${ro ? ' title="强制模式生效中: 可以勾选新增进程, 取消勾选(删进程)会被拒绝"' : ""}>
       <input type="checkbox" ${st.checked ? "checked" : ""}>
       <div><div class="t">${esc(p.label)}</div><div class="d">${esc(p.names.join(", "))}</div></div>
     </div>`;
@@ -1751,15 +1767,20 @@ function renderProcesses() {
     const st = presetState(p, cfg.blockedProcesses);
     if (st.mixed) el.querySelector("input").indeterminate = true;
   });
-  renderList("#procList", cfg.blockedProcesses, "proc");
+  renderList("#procList", cfg.blockedProcesses, "proc", ro, "强制模式生效中: 只能新增进程, 不能删除");
   applyLockNote("#procLockNote", locked, "「屏蔽进程」");
 }
 
 function renderWhitelist() {
   const locked = forceLocked();
+  const ro = tightenOnly();     // 白名单方向相反: 生效时段内只能删, 不能加(加 = 变相放行)
+  setLocked("#wlSiteInput", ro);
+  setLocked("#addWlSiteBtn", ro);
+  setLocked("#wlProcInput", ro);
+  setLocked("#addWlProcBtn", ro);
   renderList("#wlSiteList", cfg.whitelist.sites, "wlsite");
   renderList("#wlProcList", cfg.whitelist.processes, "wlproc");
-  applyLockNote("#wlLockNote", locked, "「白名单」(加入白名单会变相放行)");
+  applyLockNote("#wlLockNote", locked, "「白名单」");
 }
 
 function renderSync() {
@@ -2295,17 +2316,25 @@ function applyLockNote(sel, locked, what) {
   }
   el.className = "queue-note";
   const mine = pendingItemsFor(sel);
-  const when = forceActiveNow
-    ? "当前正在屏蔽时段内, 保存后会<b>先排队</b>。"
-    : "当前不在屏蔽时段, 保存后<b>立即生效</b>。";
-  let html = `🔒 <b>强制模式已开启</b> — ${what}仍可编辑, 改动不会丢: 会排队到<b>非屏蔽时段自动应用</b>(防破戒: 生效时段内增删名单等于直接放行)。${when}`;
+  // 白名单方向与屏蔽名单相反: 加白名单 = 放宽, 删白名单 = 收紧
+  const shrink = (sel === "#wlLockNote");
+  const rule = shrink ? "只能减少, 不能新增" : "只能新增, 不能删减";
+  const why  = shrink ? "加入白名单等于变相放行" : "删掉屏蔽项等于放行";
+  let html = `🔒 <b>强制模式已开启</b> — ${what}<b>${rule}</b>`;
+  if (forceActiveNow) {
+    html += `(防破戒: ${why})。当前正在屏蔽时段内: 收紧方向的改动会<b>先排队</b>, 到非屏蔽时段自动生效; 放宽方向的改动会被<b>直接拒绝</b>。`;
+  } else {
+    html += `。当前不在屏蔽时段, 保存后<b>立即生效</b>。`;
+  }
   if (mine.length) {
     html += `<div class="qbox"><b>⏳ 已排队 ${mine.length} 项:</b> ${mine.map(esc).join("、")}`
       + ` <button class="btn small pending-clear" type="button">↩ 撤销排队</button></div>`;
   }
   el.innerHTML = html;
 }
-// 注: 「屏蔽网页 / 屏蔽进程 / 白名单」在强制模式期间不再禁用 —— 改动由后端排队, 到非屏蔽时段自动生效。
+// 注: 「屏蔽网页 / 屏蔽进程 / 白名单」在强制模式期间不再整体禁用 —— 生效时段内只放开"收紧"方向
+//     (新增屏蔽项 / 打开屏蔽开关 / 减少白名单), 这些改动由后端排队, 到非屏蔽时段自动生效;
+//     "放宽"方向(删屏蔽项 / 关屏蔽开关 / 加白名单)直接禁用 + 事件二次守卫。
 //     仍被硬锁的只有「屏蔽星期 / 屏蔽时段」与「从云端拉取配置」, 它们直接 toast 说明。
 // 禁用元素本身 + 其所在的设置行(整行变灰)
 function setLocked(sel, locked) {
@@ -2316,10 +2345,11 @@ function setLocked(sel, locked) {
   if (row) row.classList.toggle("locked", !!locked);
 }
 
-function renderList(sel, arr, kind, locked) {
+function renderList(sel, arr, kind, delLocked, lockTitle) {
   const box = $(sel);
+  const t = (delLocked && lockTitle) ? ` title="${esc(lockTitle)}"` : "";
   box.innerHTML = arr.length ? arr.map(v =>
-    `<div class="list-item${locked ? " locked" : ""}"><code>${esc(v)}</code><button class="btn small red del-item" data-kind="${kind}" data-v="${esc(v)}" ${locked ? "disabled" : ""}>✕</button></div>`).join("")
+    `<div class="list-item${delLocked ? " locked" : ""}"><code>${esc(v)}</code><button class="btn small red del-item" data-kind="${kind}" data-v="${esc(v)}" ${delLocked ? "disabled" : ""}${t}>✕</button></div>`).join("")
     : `<div class="list-item" style="color:var(--muted)">(空)</div>`;
 }
 
@@ -2454,14 +2484,29 @@ function markDirty() { dirty = true; }
 // 总开关
 $("#enabledSwitch").addEventListener("change", e => { cfg.enabled = e.target.checked; markDirty(); });
 $("#webSwitch").addEventListener("change", e => {
+  if (tightenOnly() && !e.target.checked) {
+    e.target.checked = true;   // 回滚: 生效时段内只能开, 不能关
+    tightenToast("「屏蔽网站」总开关", "关掉就等于放行, 生效时段内只能保持开启");
+    return;
+  }
   cfg.blockWebsites = e.target.checked; markDirty();
 });
 $("#browserSwitch").addEventListener("change", e => {
+  if (tightenOnly() && !e.target.checked) {
+    e.target.checked = true;   // 回滚: 生效时段内只能开, 不能关
+    tightenToast("「工作区屏蔽」开关", "关掉就等于放行, 生效时段内只能保持开启");
+    return;
+  }
   if (!cfg.browser) cfg.browser = { enabled: true, windows: [], urlBlock: false, targets: ["edge", "chrome"] };
   cfg.browser.enabled = e.target.checked;
   markDirty();
 });
 $("#urlBlockSwitch").addEventListener("change", e => {
+  if (tightenOnly() && !e.target.checked) {
+    e.target.checked = true;   // 回滚: 生效时段内只能开, 不能关
+    tightenToast("「网址拦截」开关", "关掉就等于放行, 生效时段内只能保持开启");
+    return;
+  }
   if (!cfg.browser) cfg.browser = { enabled: true, windows: [], urlBlock: false, targets: ["edge", "chrome"] };
   cfg.browser.urlBlock = e.target.checked;
   markDirty();
@@ -2529,8 +2574,13 @@ $("#sitePresets").addEventListener("click", e => {
   const p = SITE_PRESETS.find(x => x.label === el.dataset.preset);
   const all = p.domains;
   const present = all.filter(d => cfg.blockedSites.includes(d));
-  if (present.length === all.length) cfg.blockedSites = cfg.blockedSites.filter(d => !all.includes(d));
-  else cfg.blockedSites = [...new Set([...cfg.blockedSites, ...all.filter(d => !cfg.blockedSites.includes(d))])];
+  if (present.length === all.length) {
+    // 取消勾选 = 把这些域名从屏蔽名单里删掉 = 放宽, 生效时段内拒绝
+    if (tightenOnly()) { tightenToast("「屏蔽网页」域名", "取消勾选等于删掉这些域名"); return; }
+    cfg.blockedSites = cfg.blockedSites.filter(d => !all.includes(d));
+  } else {
+    cfg.blockedSites = [...new Set([...cfg.blockedSites, ...all.filter(d => !cfg.blockedSites.includes(d))])];
+  }
   renderSites(); markDirty();
 });
 $("#addSiteBtn").addEventListener("click", () => addItem("#siteInput", v => cfg.blockedSites, "site"));
@@ -2545,6 +2595,8 @@ $("#procPresets").addEventListener("click", e => {
   const hasItem = d => cfg.blockedProcesses.some(x => String(x).toLowerCase() === String(d).toLowerCase());
   const present = all.filter(d => hasItem(d));
   if (present.length === all.length) {
+    // 取消勾选 = 把这些进程从屏蔽名单里删掉 = 放宽, 生效时段内拒绝
+    if (tightenOnly()) { tightenToast("「屏蔽进程」", "取消勾选等于删掉这些进程"); return; }
     cfg.blockedProcesses = cfg.blockedProcesses.filter(x => !all.some(d => String(x).toLowerCase() === String(d).toLowerCase()));
   } else {
     cfg.blockedProcesses = [...new Set([...cfg.blockedProcesses, ...all.filter(d => !hasItem(d))])];
@@ -2559,6 +2611,13 @@ $("#addWlSiteBtn").addEventListener("click", () => addItem("#wlSiteInput", v => 
 $("#addWlProcBtn").addEventListener("click", () => addItem("#wlProcInput", v => cfg.whitelist.processes, "wlproc"));
 
 function addItem(inputSel, getList, kind) {
+  // 白名单方向相反: 生效时段内只能减少, 不能新增 (加入白名单 = 变相放行)
+  if (kind === "wlsite" || kind === "wlproc") {
+    if (tightenOnly()) {
+      tightenToast(kind === "wlsite" ? "「白名单域名」" : "「白名单进程」", "加入白名单等于变相放行");
+      return;
+    }
+  }
   const input = $(inputSel);
   let v = input.value.trim();
   if (!v) return;
@@ -2578,6 +2637,11 @@ document.addEventListener("click", e => {
   const btn = e.target.closest(".del-item");
   if (!btn) return;
   const { kind, v } = btn.dataset;
+  // 屏蔽名单的删除 = 放宽, 生效时段内拒绝(按钮已禁用, 这里再守一道, 防止绕过 disabled 强行点击)
+  if (SHIELD_KIND[kind] && tightenOnly()) {
+    tightenToast(SHIELD_KIND[kind], "删掉就等于放行");
+    return;
+  }
   const lists = { site: cfg.blockedSites, proc: cfg.blockedProcesses, wlsite: cfg.whitelist.sites, wlproc: cfg.whitelist.processes, bwin: cfg.browser.windows };
   const list = lists[kind];
   const i = list.indexOf(v);

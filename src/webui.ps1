@@ -180,11 +180,13 @@ $handler = {
                 }
                 # 强制模式开启期间:
                 #   「屏蔽星期 / 屏蔽时段」-> 硬拒 (它们正是"何时算非屏蔽时段"的定义, 改了就绕开强制)
-                #   「屏蔽网页 / 屏蔽进程 / 白名单」-> 生效时段内先排队, 等本次时段结束由引擎自动生效
+                #   「放宽」类(删屏蔽项 / 关屏蔽开关 / 往白名单加项) -> 生效时段内硬拒 (只能增不能删, 删了就是放行)
+                #   「收紧」类(加屏蔽项 / 开屏蔽开关 / 从白名单删项) -> 生效时段内先排队, 等本次时段结束由引擎自动生效
                 #   判据集中在 core.ps1 的 Get-AfsConfigLockDiff (可离线回归测试)。
                 if ([bool]$curCfg.force.enabled) {
                     $diff = Get-AfsConfigLockDiff -Current $curCfg -Incoming $inCfg
                     if ($diff.hardMsg) { throw $diff.hardMsg }
+                    if ($forceNow.active -and $diff.widenMsg) { throw $diff.widenMsg }
                     if (@($diff.queueKeys).Count -gt 0 -and $forceNow.active) {
                         $q = Save-AfsPendingQueue -Current $curCfg -Incoming $inCfg -Reason '强制模式生效中'
                         Send-AfsJson -Stream $stream -Status 200 -Obj @{
