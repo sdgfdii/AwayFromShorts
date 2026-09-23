@@ -154,6 +154,69 @@ function Normalize-AfsList {
     return @($Value)
 }
 
+# 列表签名: 小写 / 去首尾空白 / 去重 / 排序后拼接, 用于判断"名单内容是否被改动"
+# (域名与进程名都大小写不敏感; 只改大小写、重复填写或调换填写顺序不算改动)
+function Get-AfsListSignature {
+    param($List)
+    $arr = New-Object System.Collections.ArrayList
+    foreach ($x in @($List)) {
+        if ($null -eq $x) { continue }
+        $s = ([string]$x).Trim().ToLowerInvariant()
+        if ($s) { [void]$arr.Add($s) }
+    }
+    if ($arr.Count -eq 0) { return '' }
+    return (@($arr | Sort-Object -Unique) -join '|')
+}
+
+# 强制模式开启期间, 哪些配置改动必须被拒绝? (防破戒)
+# 返回 $null = 无违规(可保存); 否则返回拒绝原因(字符串, 直接展示给用户)。
+# 锁定范围: 屏蔽星期 / 屏蔽时段 / 屏蔽网页(域名+总开关+Edge工作区+浏览器拦截) / 屏蔽进程 / 白名单
+# 抽成独立函数是为了能脱离 HTTP 服务做离线回归测试。
+function Test-AfsConfigLockViolation {
+    param($Current, $Incoming)
+    if ($null -eq $Current -or $null -eq $Incoming) { return $null }
+
+    # 1) 屏蔽计划: 改星期或时段会让强制模式当天失效
+    if ((Get-AfsListSignature $Current.schedule.days) -ne (Get-AfsListSignature $Incoming.schedule.days)) {
+        return '强制模式开启中, 无法更改「屏蔽星期」(防破戒)。请先在「强制模式」卡片关闭强制模式, 再修改屏蔽日期。'
+    }
+    $curWin = @(Normalize-AfsList $Current.schedule.windows | Where-Object { $_ } | ForEach-Object { "$($_.start)-$($_.end)" })
+    $newWin = @(Normalize-AfsList $Incoming.schedule.windows | Where-Object { $_ } | ForEach-Object { "$($_.start)-$($_.end)" })
+    if ((Get-AfsListSignature $curWin) -ne (Get-AfsListSignature $newWin)) {
+        return '强制模式开启中, 无法更改「屏蔽时段」(防破戒)。请先在「强制模式」卡片关闭强制模式, 再修改时间段。'
+    }
+
+    # 2) 屏蔽网页: 域名名单 / 网站屏蔽总开关 / Edge 工作区名单 / 浏览器拦截开关
+    if ((Get-AfsListSignature $Current.blockedSites) -ne (Get-AfsListSignature $Incoming.blockedSites)) {
+        return '强制模式开启中, 无法更改「屏蔽网页」域名名单(防破戒: 增删域名等于直接放行)。请先关闭强制模式, 再修改网站屏蔽列表。'
+    }
+    if ([bool]$Current.blockWebsites -ne [bool]$Incoming.blockWebsites) {
+        return '强制模式开启中, 无法更改「屏蔽网站」总开关(防破戒)。请先关闭强制模式, 再开关网站屏蔽。'
+    }
+    if ((Get-AfsListSignature ($Current.browser).windows) -ne (Get-AfsListSignature ($Incoming.browser).windows)) {
+        return '强制模式开启中, 无法更改「屏蔽 Edge 工作区」名单(防破戒)。请先关闭强制模式, 再修改工作区列表。'
+    }
+    if (([bool]($Current.browser).enabled -ne [bool]($Incoming.browser).enabled) -or
+        ([bool]($Current.browser).urlBlock -ne [bool]($Incoming.browser).urlBlock)) {
+        return '强制模式开启中, 无法更改浏览器屏蔽开关(防破戒)。请先关闭强制模式, 再调整浏览器拦截设置。'
+    }
+
+    # 3) 屏蔽进程: 删掉进程等于直接放行
+    if ((Get-AfsListSignature $Current.blockedProcesses) -ne (Get-AfsListSignature $Incoming.blockedProcesses)) {
+        return '强制模式开启中, 无法更改「屏蔽进程」名单(防破戒: 删除进程等于直接放行)。请先关闭强制模式, 再修改进程屏蔽列表。'
+    }
+
+    # 4) 白名单: 加入白名单同样能绕开屏蔽
+    if ((Get-AfsListSignature ($Current.whitelist).sites) -ne (Get-AfsListSignature ($Incoming.whitelist).sites)) {
+        return '强制模式开启中, 无法更改「白名单域名」(防破戒: 加入白名单会变相放行)。请先关闭强制模式, 再修改白名单。'
+    }
+    if ((Get-AfsListSignature ($Current.whitelist).processes) -ne (Get-AfsListSignature ($Incoming.whitelist).processes)) {
+        return '强制模式开启中, 无法更改「白名单进程」(防破戒: 加入白名单会变相放行)。请先关闭强制模式, 再修改白名单。'
+    }
+
+    return $null
+}
+
 # 校验 + 规范化 + 落盘
 function Set-AfsConfigSafe {
     param($InputConfig)
@@ -1119,6 +1182,10 @@ function Push-AfsSyncConfig {
 # 从云端 Gist 拉取配置覆盖本机 (覆盖前自动备份)
 function Pull-AfsSyncConfig {
     param([string]$Token)
+    # 强制模式开启期间禁止从云端覆盖本地配置(防破戒: 拉取会覆盖本机屏蔽名单 / 屏蔽时段, 等于绕过强制)
+    if ([bool](Get-AfsConfig).force.enabled) {
+        throw "强制模式开启中, 无法从云端拉取配置(防破戒: 拉取会覆盖本机屏蔽名单 / 时段)。请先关闭强制模式, 再同步。"
+    }
     $state = Get-AfsSyncState
     $gistId = $state.gistId
     if (-not $gistId) { $gistId = Find-AfsSyncGist -Token $Token }

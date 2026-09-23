@@ -137,6 +137,14 @@
   .chip.locked.on { background: var(--accent2); border-color: var(--accent2); color: #fff; }
   .window-row.locked input[type="time"] { opacity: .45; cursor: not-allowed; pointer-events: none; }
   .window-row.locked .del-window { opacity: .4; cursor: not-allowed; }
+  /* 强制模式开启期间: 名单 / 开关 / 输入框统一"锁定"外观 */
+  .preset.locked { opacity: .45; cursor: not-allowed; }
+  .preset.locked:hover { transform: none; border-color: var(--border); box-shadow: var(--sh-1); }
+  .preset.locked input { cursor: not-allowed; }
+  .list-item.locked .del-item { opacity: .35; cursor: not-allowed; pointer-events: none; }
+  .add-row.locked input, .add-row.locked .btn,
+  .switch-row.locked .switch, .switch-row.locked input { opacity: .45; cursor: not-allowed; }
+  input:disabled, button:disabled { cursor: not-allowed; }
   #addWindowBtn[disabled] { opacity: .45; cursor: not-allowed; }
 
   .window-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
@@ -976,6 +984,7 @@
           </div>
         </div>
         <div class="hint">勾选常用网站预设,或添加自定义域名。屏蔽期间这些域名将无法访问(整站屏蔽,不能只屏蔽某个频道的短视频)。</div>
+        <div class="red-note" id="sitesLockNote" style="display:none;margin-top:10px"></div>
       </div>
       <div class="card">
         <div class="switch-row">
@@ -1024,6 +1033,7 @@
       </div>
       <div class="card">
         <div class="hint">屏蔽期间,匹配的进程会被强制结束(每 1 分钟检查一次,反复打开的也会被杀掉)。进程名不区分大小写,可不写 .exe,支持 <code>*</code> 通配符。</div>
+        <div class="red-note" id="procLockNote" style="display:none;margin-top:10px"></div>
       </div>
       <div class="card">
         <h3>常用程序</h3>
@@ -1051,6 +1061,7 @@
       <div class="card">
         <h3>🛡 白名单域名</h3>
         <div class="hint">即使出现在屏蔽列表里,这些域名也永远放行(白名单优先)。</div>
+        <div class="red-note" id="wlLockNote" style="display:none;margin-top:10px"></div>
         <div class="add-row">
           <input id="wlSiteInput" placeholder="例如: mail.example.com" spellcheck="false">
           <button class="btn" id="addWlSiteBtn">添加</button>
@@ -1144,6 +1155,7 @@
           <button class="btn red" id="syncLogoutBtn">🚪 退出登录</button>
         </div>
         <div class="note">推送: 本机配置上传到私有 Gist。拉取: 云端配置覆盖本机(覆盖前自动备份到 config.json.backup-时间戳)。临时屏蔽状态不会同步。</div>
+        <div class="red-note" id="syncLockNote" style="display:none;margin-top:10px"></div>
       </div>
     </section>
 
@@ -1570,7 +1582,7 @@ function renderSchedule() {
       const fw = ((cfg.force || {}).weekdays || []).filter(x => x);
       const fwTxt = (!fw.length || fw.length >= 7) ? "每天" : fw.map(d => WD_CN[d]).join("、");
       ln.style.display = "";
-      ln.innerHTML = `🔒 <b>强制模式已开启</b>(强制星期: ${fwTxt}) — 强制模式开启期间<b>「屏蔽星期」与「屏蔽时段」均已锁定, 无法修改</b>(防破戒: 改星期或时段会让强制模式当天失效)。如需调整, 请先在上方「强制模式」卡片中<b>关闭强制模式</b>。`;
+      ln.innerHTML = `🔒 <b>强制模式已开启</b>(强制星期: ${fwTxt}) — 强制模式开启期间<b>「屏蔽星期」「屏蔽时段」「屏蔽进程」「屏蔽网页」「白名单」均已锁定, 无法修改</b>(防破戒: 改星期或时段会让强制模式当天失效, 改名单或加白名单等于直接放行)。如需调整, 请先在上方「强制模式」卡片中<b>关闭强制模式</b>。`;
     } else {
       ln.style.display = "none";
     }
@@ -1599,13 +1611,13 @@ function renderForce() {
   const fWds = f.weekdays || [];
   if (f.enabled && forced) {
     fa.innerHTML =
-      `<div class="note red-note">🔒 <b>强制模式生效中(当前屏蔽时段)</b> — 强制期间<b>无法提前关闭</b>(防破戒), 也无法关闭屏蔽 / 临时解除 / <b>修改屏蔽星期 / 屏蔽时段</b>。<br>适用: <b>${wdShow(fWds)}</b> 的屏蔽时段, 星期循环长期有效(无到期日)。等当前时段结束, 或在非所选星期 / 屏蔽窗口外可手动关闭。</div>`;
+      `<div class="note red-note">🔒 <b>强制模式生效中(当前屏蔽时段)</b> — 强制期间<b>无法提前关闭</b>(防破戒), 也无法关闭屏蔽 / 临时解除 / <b>修改屏蔽星期 / 屏蔽时段 / 屏蔽进程 / 屏蔽网页 / 白名单</b>。<br>适用: <b>${wdShow(fWds)}</b> 的屏蔽时段, 星期循环长期有效(无到期日)。等当前时段结束, 或在非所选星期 / 屏蔽窗口外可手动关闭。</div>`;
     return;
   }
   if (f.enabled) {
     fa.innerHTML =
       `<div class="note">🔒 <b>强制模式已开启</b>(星期循环): <b>${wdShow(fWds)}</b> 的屏蔽时段内自动强制。<br>当前<b>不在强制时段</b>(屏蔽窗口外或非所选星期), 可正常使用; 进入强制时段后将无法关闭, 直到时段结束。要停用请点下方按钮。</div>` +
-      `<div class="note warn" style="margin-top:8px">📅 强制模式开启期间<b>「屏蔽星期」已锁定, 无法修改</b>(防破戒)。如需调整, 请先点下方按钮关闭强制模式。</div>` +
+      `<div class="note warn" style="margin-top:8px">📅 强制模式开启期间<b>「屏蔽星期」「屏蔽时段」「屏蔽进程」「屏蔽网页」「白名单」均已锁定, 无法修改</b>(防破戒)。如需调整, 请先点下方按钮关闭强制模式。</div>` +
       `<button class="btn danger" id="forceOffBtn">🔓 关闭强制模式</button>`;
     const off = $("#forceOffBtn");
     if (off) off.addEventListener("click", async () => {
@@ -1637,7 +1649,7 @@ function renderForce() {
   }));
   const on = $("#forceOnBtn");
   if (on) on.addEventListener("click", async () => {
-    if (!confirm("确定开启强制模式?\n\n开启后: 在所选星期(" + wdTxt(wdSel) + ")的屏蔽时段内长期强制:\n• 强制中无法关闭屏蔽 / 临时解除 / 清除临时设置 / 修改屏蔽星期 / 修改屏蔽时段\n• 强制中无法提前关闭(防破戒)\n• 非强制时段(窗口外 / 非所选星期)可手动关闭\n\n⚠️ 想清楚再开——进入强制时段就无法反悔, 只能等时段结束。")) return;
+    if (!confirm("确定开启强制模式?\n\n开启后: 在所选星期(" + wdTxt(wdSel) + ")的屏蔽时段内长期强制:\n• 强制中无法关闭屏蔽 / 临时解除 / 清除临时设置 / 修改屏蔽星期 / 修改屏蔽时段\n• 强制中无法修改屏蔽进程 / 屏蔽网页名单(含网站屏蔽总开关、Edge 工作区、浏览器拦截开关)\n• 强制中无法修改白名单(加白名单 = 变相放行)\n• 强制中无法提前关闭(防破戒)\n• 非强制时段(窗口外 / 非所选星期)可手动关闭\n\n⚠️ 想清楚再开——进入强制时段就无法反悔, 只能等时段结束。")) return;
     try {
       const r = await api("/api/force", "POST", { enabled: true, weekdays: wdSel });
       toast(r.note || "强制模式已开启", "ok");
@@ -1652,11 +1664,13 @@ function presetState(preset, list) {
 }
 
 function renderSites() {
+  const locked = forceLocked();
+  setLocked("#webSwitch", locked);
   $("#webSwitch").checked = !!cfg.blockWebsites;
   $("#sitePresets").innerHTML = SITE_PRESETS.map(p => {
     const st = presetState(p, cfg.blockedSites);
-    return `<div class="preset ${st.checked ? "checked" : ""}" data-preset="${esc(p.label)}">
-      <input type="checkbox" ${st.checked ? "checked" : ""}>
+    return `<div class="preset ${st.checked ? "checked" : ""}${locked ? " locked" : ""}" data-preset="${esc(p.label)}" title="${locked ? "强制模式开启中, 屏蔽网页名单已锁定" : ""}">
+      <input type="checkbox" ${st.checked ? "checked" : ""} ${locked ? "disabled" : ""}>
       <div><div class="t">${esc(p.label)}</div><div class="d">${esc(p.domains.join(" · "))}</div></div>
     </div>`;
   }).join("");
@@ -1666,21 +1680,31 @@ function renderSites() {
     const st = presetState(p, cfg.blockedSites);
     if (st.mixed) el.querySelector("input").indeterminate = true;
   });
-  renderList("#siteList", cfg.blockedSites, "site");
+  setLocked("#siteInput", locked);
+  setLocked("#addSiteBtn", locked);
+  renderList("#siteList", cfg.blockedSites, "site", locked);
+  applyLockNote("#sitesLockNote", locked, "「屏蔽网页」(域名名单 / 网站屏蔽总开关 / Edge 工作区 / 浏览器拦截开关)");
 }
 
 function renderBrowser() {
   if (!cfg.browser) cfg.browser = { enabled: true, windows: [], urlBlock: false, targets: ["edge", "chrome"] };
+  const locked = forceLocked();
+  setLocked("#browserSwitch", locked);
+  setLocked("#urlBlockSwitch", locked);
+  setLocked("#browserWinInput", locked);
+  setLocked("#addBrowserWinBtn", locked);
+  setLocked("#scanWinBtn", locked);
   $("#browserSwitch").checked = !!cfg.browser.enabled;
   $("#urlBlockSwitch").checked = !!cfg.browser.urlBlock;
-  renderList("#browserWinList", cfg.browser.windows, "bwin");
+  renderList("#browserWinList", cfg.browser.windows, "bwin", locked);
 }
 
 function renderProcesses() {
+  const locked = forceLocked();
   $("#procPresets").innerHTML = PROC_PRESETS.map(p => {
     const st = presetState(p, cfg.blockedProcesses);
-    return `<div class="preset ${st.checked ? "checked" : ""}" data-preset="${esc(p.label)}">
-      <input type="checkbox" ${st.checked ? "checked" : ""}>
+    return `<div class="preset ${st.checked ? "checked" : ""}${locked ? " locked" : ""}" data-preset="${esc(p.label)}" title="${locked ? "强制模式开启中, 屏蔽进程名单已锁定" : ""}">
+      <input type="checkbox" ${st.checked ? "checked" : ""} ${locked ? "disabled" : ""}>
       <div><div class="t">${esc(p.label)}</div><div class="d">${esc(p.names.join(", "))}</div></div>
     </div>`;
   }).join("");
@@ -1689,15 +1713,27 @@ function renderProcesses() {
     const st = presetState(p, cfg.blockedProcesses);
     if (st.mixed) el.querySelector("input").indeterminate = true;
   });
-  renderList("#procList", cfg.blockedProcesses, "proc");
+  setLocked("#procInput", locked);
+  setLocked("#addProcBtn", locked);
+  renderList("#procList", cfg.blockedProcesses, "proc", locked);
+  applyLockNote("#procLockNote", locked, "「屏蔽进程」");
 }
 
 function renderWhitelist() {
-  renderList("#wlSiteList", cfg.whitelist.sites, "wlsite");
-  renderList("#wlProcList", cfg.whitelist.processes, "wlproc");
+  const locked = forceLocked();
+  setLocked("#wlSiteInput", locked);
+  setLocked("#addWlSiteBtn", locked);
+  setLocked("#wlProcInput", locked);
+  setLocked("#addWlProcBtn", locked);
+  renderList("#wlSiteList", cfg.whitelist.sites, "wlsite", locked);
+  renderList("#wlProcList", cfg.whitelist.processes, "wlproc", locked);
+  applyLockNote("#wlLockNote", locked, "「白名单」(加入白名单会变相放行)");
 }
 
 function renderSync() {
+  const locked = forceLocked();
+  setLocked("#syncPullBtn", locked);
+  applyLockNote("#syncLockNote", locked, "「从云端拉取配置」(拉取会覆盖本机屏蔽名单 / 时段, 等于绕过强制)");
   const ok = !!(acct && acct.loggedIn);
   $("#syncLoginCard").style.display = ok ? "none" : "";
   $("#syncAcctCard").style.display = ok ? "" : "none";
@@ -2197,10 +2233,36 @@ function statsViewMonth() {
   });
 })();
 
-function renderList(sel, arr, kind) {
+/* ---------- 强制模式锁定 (防破戒) ---------- */
+// 锁定提示: 写在名单卡片里, 说明为什么不能改、怎么解锁
+function applyLockNote(sel, locked, what) {
+  const el = $(sel);
+  if (!el) return;
+  if (!locked) { el.style.display = "none"; return; }
+  el.style.display = "";
+  el.innerHTML = `🔒 <b>强制模式已开启</b> — 强制模式开启期间<b>${what}已锁定, 无法更改</b>(防破戒: 增删名单 / 关闭开关都等于放行)。如需调整, 请先到「状态 / 屏蔽计划」页<b>关闭强制模式</b>。`;
+}
+function lockToast(what) {
+  toast(`🔒 强制模式开启中, ${what}已锁定。请先关闭强制模式再修改。`, "err");
+}
+// 名单种类 -> 界面名称(用于锁定提示)
+const LOCK_NAME = {
+  site: "「屏蔽网页」域名名单", proc: "「屏蔽进程」名单", bwin: "「屏蔽 Edge 工作区」名单",
+  wlsite: "「白名单域名」", wlproc: "「白名单进程」"
+};
+// 禁用元素本身 + 其所在的设置行(整行变灰)
+function setLocked(sel, locked) {
+  const el = $(sel);
+  if (!el) return;
+  el.disabled = !!locked;
+  const row = el.closest(".switch-row, .add-row");
+  if (row) row.classList.toggle("locked", !!locked);
+}
+
+function renderList(sel, arr, kind, locked) {
   const box = $(sel);
   box.innerHTML = arr.length ? arr.map(v =>
-    `<div class="list-item"><code>${esc(v)}</code><button class="btn small red del-item" data-kind="${kind}" data-v="${esc(v)}">✕</button></div>`).join("")
+    `<div class="list-item${locked ? " locked" : ""}"><code>${esc(v)}</code><button class="btn small red del-item" data-kind="${kind}" data-v="${esc(v)}" ${locked ? "disabled" : ""}>✕</button></div>`).join("")
     : `<div class="list-item" style="color:var(--muted)">(空)</div>`;
 }
 
@@ -2334,13 +2396,18 @@ function markDirty() { dirty = true; }
 
 // 总开关
 $("#enabledSwitch").addEventListener("change", e => { cfg.enabled = e.target.checked; markDirty(); });
-$("#webSwitch").addEventListener("change", e => { cfg.blockWebsites = e.target.checked; markDirty(); });
+$("#webSwitch").addEventListener("change", e => {
+  if (forceLocked()) { e.target.checked = !e.target.checked; lockToast("「屏蔽网站」总开关"); return; }
+  cfg.blockWebsites = e.target.checked; markDirty();
+});
 $("#browserSwitch").addEventListener("change", e => {
+  if (forceLocked()) { e.target.checked = !e.target.checked; lockToast("「屏蔽 Edge 工作区」开关"); return; }
   if (!cfg.browser) cfg.browser = { enabled: true, windows: [], urlBlock: false, targets: ["edge", "chrome"] };
   cfg.browser.enabled = e.target.checked;
   markDirty();
 });
 $("#urlBlockSwitch").addEventListener("change", e => {
+  if (forceLocked()) { e.target.checked = !e.target.checked; lockToast("「拦截娱乐网站」开关"); return; }
   if (!cfg.browser) cfg.browser = { enabled: true, windows: [], urlBlock: false, targets: ["edge", "chrome"] };
   cfg.browser.urlBlock = e.target.checked;
   markDirty();
@@ -2350,6 +2417,7 @@ $("#addBrowserWinBtn").addEventListener("click", () => {
   addItem("#browserWinInput", () => cfg.browser.windows, "bwin");
 });
 $("#scanWinBtn").addEventListener("click", async () => {
+  if (forceLocked()) { lockToast("「屏蔽 Edge 工作区」名单"); return; }
   if (!cfg.browser) cfg.browser = { enabled: true, windows: [], urlBlock: false, targets: ["edge", "chrome"] };
   try {
     const r = await api("/api/browser/windows", "GET");
@@ -2405,6 +2473,7 @@ $("#addWindowBtn").addEventListener("click", () => {
 $("#sitePresets").addEventListener("click", e => {
   const el = e.target.closest(".preset");
   if (!el) return;
+  if (forceLocked()) { lockToast("「屏蔽网页」域名名单"); return; }
   const p = SITE_PRESETS.find(x => x.label === el.dataset.preset);
   const all = p.domains;
   const present = all.filter(d => cfg.blockedSites.includes(d));
@@ -2419,6 +2488,7 @@ $("#siteInput").addEventListener("keydown", e => { if (e.key === "Enter") $("#ad
 $("#procPresets").addEventListener("click", e => {
   const el = e.target.closest(".preset");
   if (!el) return;
+  if (forceLocked()) { lockToast("「屏蔽进程」名单"); return; }
   const p = PROC_PRESETS.find(x => x.label === el.dataset.preset);
   const all = p.names;
   const hasItem = d => cfg.blockedProcesses.some(x => String(x).toLowerCase() === String(d).toLowerCase());
@@ -2438,6 +2508,7 @@ $("#addWlSiteBtn").addEventListener("click", () => addItem("#wlSiteInput", v => 
 $("#addWlProcBtn").addEventListener("click", () => addItem("#wlProcInput", v => cfg.whitelist.processes, "wlproc"));
 
 function addItem(inputSel, getList, kind) {
+  if (forceLocked()) { lockToast(LOCK_NAME[kind] || "该名单"); return; }
   const input = $(inputSel);
   let v = input.value.trim();
   if (!v) return;
@@ -2457,6 +2528,7 @@ document.addEventListener("click", e => {
   const btn = e.target.closest(".del-item");
   if (!btn) return;
   const { kind, v } = btn.dataset;
+  if (forceLocked()) { lockToast(LOCK_NAME[kind] || "该名单"); return; }
   const lists = { site: cfg.blockedSites, proc: cfg.blockedProcesses, wlsite: cfg.whitelist.sites, wlproc: cfg.whitelist.processes, bwin: cfg.browser.windows };
   const list = lists[kind];
   const i = list.indexOf(v);
@@ -2566,6 +2638,7 @@ $("#syncPushBtn").addEventListener("click", async () => {
 });
 
 $("#syncPullBtn").addEventListener("click", async () => {
+  if (forceLocked()) { lockToast("「从云端拉取配置」"); return; }
   if (!confirm("从云端拉取会用云端配置覆盖本机当前配置(本机会自动备份)。确定吗?")) return;
   const btn = $("#syncPullBtn");
   btn.disabled = true;

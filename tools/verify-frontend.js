@@ -59,6 +59,17 @@ const markers = [
   ["可见焦点环", /:focus-visible \{ outline: 2px solid var\(--accent\)/],
   ["按钮样式复位", /width: 100%; background: transparent; font: inherit; text-align: left;/],
   ["强制模式: 星期/时段锁定", /forceLocked/],
+  // 强制模式开启期间: 屏蔽进程 / 屏蔽网页 / 白名单 / 云端拉取 全部锁定(防破戒)
+  ["强制模式: 锁定提示 helper", /function applyLockNote\(/],
+  ["强制模式: 禁用+整行变灰 helper", /function setLocked\(/],
+  ["强制模式: 屏蔽网页锁定提示", /id="sitesLockNote"/],
+  ["强制模式: 屏蔽进程锁定提示", /id="procLockNote"/],
+  ["强制模式: 白名单锁定提示", /id="wlLockNote"/],
+  ["强制模式: 同步拉取锁定提示", /id="syncLockNote"/],
+  ["强制模式: 名单删除按钮锁定", /list-item\$\{locked \? " locked" : ""\}/],
+  ["强制模式: 预设卡片锁定", /\$\{locked \? " locked" : ""\}\" data-preset=/],
+  ["强制模式: 新增项守卫", /if \(forceLocked\(\)\) \{ lockToast\(LOCK_NAME\[kind\] \|\| "该名单"\); return; \}/],
+  ["强制模式: 渲染时调用锁定提示", /applyLockNote\("#sitesLockNote", locked,/],
   // 首屏健壮性 (开机后空白页回归防护)
   ["首屏分接口结算 allSettled", /Promise\.allSettled\(/],
   ["首屏退避重试 bootRetry", /function bootRetry\(/],
@@ -118,6 +129,21 @@ try {
     ["后端: activity 读取走重试+进程内缓存", /Read-AfsTextRetry -Path \$p[\s\S]{0,200}afsActivityCache/, core],
     ["后端: stats 落盘用原子写", /Write-AfsTextAtomic -Path \(Get-AfsStatsPath\)/, core],
     ["后端: activity 落盘用原子写", /Write-AfsTextAtomic -Path \(Get-AfsActivityPath\)/, core],
+    // 强制模式开启期间的"不可更改"守卫 (防破戒: 改名单 / 关开关 / 拉云端配置都能绕过)
+    // 判据集中在 core.ps1 的 Test-AfsConfigLockViolation, 离线回归见 tools/verify-lock.ps1
+    ["后端: 名单签名归一化函数", /function Get-AfsListSignature/, core],
+    ["后端: 锁定守卫总入口", /function Test-AfsConfigLockViolation/, core],
+    ["后端: 锁定屏蔽星期", /Get-AfsListSignature \$Current\.schedule\.days/, core],
+    ["后端: 锁定屏蔽时段", /Get-AfsListSignature \$curWin\) -ne \(Get-AfsListSignature \$newWin/, core],
+    ["后端: 锁定屏蔽网页名单", /Get-AfsListSignature \$Current\.blockedSites/, core],
+    ["后端: 锁定屏蔽进程名单", /Get-AfsListSignature \$Current\.blockedProcesses/, core],
+    ["后端: 锁定网站屏蔽总开关", /\[bool\]\$Current\.blockWebsites -ne \[bool\]\$Incoming\.blockWebsites/, core],
+    ["后端: 锁定 Edge 工作区名单", /Get-AfsListSignature \(\$Current\.browser\)\.windows/, core],
+    ["后端: 锁定浏览器拦截开关", /\[bool\]\(\$Current\.browser\)\.enabled/, core],
+    ["后端: 锁定白名单域名", /Get-AfsListSignature \(\$Current\.whitelist\)\.sites/, core],
+    ["后端: 锁定白名单进程", /Get-AfsListSignature \(\$Current\.whitelist\)\.processes/, core],
+    ["后端: 面板调用统一守卫", /Test-AfsConfigLockViolation -Current \$curCfg -Incoming \$inCfg/, ui],
+    ["后端: 强制中禁止云端拉取覆盖", /强制模式开启中, 无法从云端拉取配置/, core],
   ];
   backend.forEach(([name, re, src]) => rep(name, re.test(src)));
 } catch (e) { rep("读取后端脚本", false, "- " + e.message); }

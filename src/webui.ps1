@@ -166,18 +166,12 @@ $handler = {
                 if ($forceNow.active -and -not [bool]$inCfg.enabled) {
                     throw "强制模式生效中 (可先关闭强制模式, 再关闭屏蔽)"
                 }
-                # 强制模式开启期间锁定「屏蔽计划」(防破戒): 改星期或屏蔽时段都能让强制模式当天不生效, 绕开强制
+                # 强制模式开启期间锁定「屏蔽计划」与「屏蔽名单」(防破戒):
+                # 改星期/时段能让强制模式当天失效; 改屏蔽进程/网页名单、关总开关、加白名单等于直接放行。
+                # 判据集中在 core.ps1 的 Test-AfsConfigLockViolation (可离线回归测试)。
                 if ([bool]$curCfg.force.enabled) {
-                    $oldDays = (@($curCfg.schedule.days) | Sort-Object) -join ','
-                    $newDays = (@($inCfg.schedule.days) | Sort-Object) -join ','
-                    if ($oldDays -ne $newDays) {
-                        throw "强制模式开启中, 无法更改「屏蔽星期」(防破戒)。请先在「强制模式」卡片关闭强制模式, 再修改屏蔽日期。"
-                    }
-                    $oldWin = (@($curCfg.schedule.windows) | Where-Object { $_ } | ForEach-Object { "$($_.start)-$($_.end)" } | Sort-Object) -join ','
-                    $newWin = (@($inCfg.schedule.windows) | Where-Object { $_ } | ForEach-Object { "$($_.start)-$($_.end)" } | Sort-Object) -join ','
-                    if ($oldWin -ne $newWin) {
-                        throw "强制模式开启中, 无法更改「屏蔽时段」(防破戒)。请先在「强制模式」卡片关闭强制模式, 再修改时间段。"
-                    }
+                    $violation = Test-AfsConfigLockViolation -Current $curCfg -Incoming $inCfg
+                    if ($violation) { throw $violation }
                 }
                 $newCfg = Set-AfsConfigSafe -InputConfig $inCfg
                 Send-AfsJson -Stream $stream -Status 200 -Obj @{
