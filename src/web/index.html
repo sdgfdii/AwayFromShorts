@@ -1617,16 +1617,18 @@ function renderSchedule() {
   }
 
   const ws = cfg.schedule.windows;
-  $("#windowRows").innerHTML = (ws.length ? ws : [{ start: "19:00", end: "22:00" }]).map((w, i) =>
+  // 空时段 = 诚实的空状态(所见即所得): 不再伪造一行 19:00-22:00 —— 那行只是显示、配置里并不存在,
+  // 用户会以为"设了时段"实际没有, 不保存就丢。空 = 任何时间都不按时段屏蔽, 直接说清楚。
+  $("#windowRows").innerHTML = ws.length ? ws.map((w, i) =>
     `<div class="window-row${locked ? " locked" : ""}">
        <input type="time" value="${esc(w.start)}" data-i="${i}" data-f="start" ${locked ? "disabled" : ""} title="${locked ? "强制模式开启中, 屏蔽时段已锁定" : ""}">
        <span class="sep">→</span>
        <input type="time" value="${esc(w.end)}" data-i="${i}" data-f="end" ${locked ? "disabled" : ""} title="${locked ? "强制模式开启中, 屏蔽时段已锁定" : ""}">
        <button class="btn small red del-window" data-i="${i}" ${locked ? "disabled" : ""}>删除</button>
-     </div>`).join("");
+     </div>`).join("")
+    : `<div class="hint" id="windowEmpty" style="padding:6px 0 10px">未设置时段 —— 当前<b>任何时间都不会按时段屏蔽</b>(强制模式 / 临时屏蔽不受影响)。点下方「＋ 添加时间段」开始设置。</div>`;
   const awb = $("#addWindowBtn");
   if (awb) awb.disabled = locked;
-  if (!ws.length && !locked) cfg.schedule.windows = [{ start: "19:00", end: "22:00" }];
 }
 
 function renderForce() {

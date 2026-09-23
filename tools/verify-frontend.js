@@ -57,6 +57,8 @@ const markers = [
   ["统计重试后台/离页即停", /if \(document\.hidden \|\| !panelActive\) \{ statsAttempt = 0; return; \}/],
   ["手动重连取消排队重试", /clearTimeout\(bootTimer\); bootTimer = null; bootAttempt = 0;/],
   ["ensureBrowser 兜底函数", /function ensureBrowser\(\)/],
+  ["空时段诚实空状态(不伪造 19:00)", /id="windowEmpty"/],
+  ["空时段走三元分支而非回写配置", /\$\("#windowRows"\)\.innerHTML = ws\.length \? ws\.map/],
   ["减少动效降级", /@media \(prefers-reduced-motion: reduce\)/],
   ["侧边栏 <nav> 语义", /<nav class="sidebar" aria-label="主导航">/],
   ["role=tablist", /role="tablist" aria-orientation="vertical"/],
