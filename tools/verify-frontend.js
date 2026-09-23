@@ -59,17 +59,29 @@ const markers = [
   ["可见焦点环", /:focus-visible \{ outline: 2px solid var\(--accent\)/],
   ["按钮样式复位", /width: 100%; background: transparent; font: inherit; text-align: left;/],
   ["强制模式: 星期/时段锁定", /forceLocked/],
-  // 强制模式开启期间: 屏蔽进程 / 屏蔽网页 / 白名单 / 云端拉取 全部锁定(防破戒)
+  // 强制模式开启期间: 「屏蔽网页 / 屏蔽进程 / 白名单」改为排队(非屏蔽时段自动生效);
+  // 「屏蔽星期 / 屏蔽时段」与「从云端拉取配置」仍是硬锁。
+  ["排队: 补丁深合并(不丢嵌套键)", /function deepMergePatch\(target, patch\)/],
+  ["排队: 叠加到展示态", /function applyPendingToView\(p\)/],
+  ["排队: 状态变量 pendingInfo", /let pendingInfo = null;/],
+  ["排队: 顶栏待生效胶囊", /id="pendingPill"/],
+  ["排队: 黄色提示条样式", /\.queue-note \{/],
+  ["排队: 按类目取排队条目", /function pendingItemsFor\(sel\)/],
+  ["排队: 撤销排队按钮", /class="btn small pending-clear"/],
+  ["排队: 撤销走 /api/pending/clear", /"\/api\/pending\/clear", "POST", \{\}/],
+  ["排队: 保存后按 queued 区分提示", /if \(r\.queued\) toast\("⏳ 已排队/],
+  ["排队: 队列变化后重新拉配置", /if \(qBefore !== qAfter\)/],
   ["强制模式: 锁定提示 helper", /function applyLockNote\(/],
   ["强制模式: 禁用+整行变灰 helper", /function setLocked\(/],
-  ["强制模式: 屏蔽网页锁定提示", /id="sitesLockNote"/],
-  ["强制模式: 屏蔽进程锁定提示", /id="procLockNote"/],
-  ["强制模式: 白名单锁定提示", /id="wlLockNote"/],
-  ["强制模式: 同步拉取锁定提示", /id="syncLockNote"/],
-  ["强制模式: 名单删除按钮锁定", /list-item\$\{locked \? " locked" : ""\}/],
-  ["强制模式: 预设卡片锁定", /\$\{locked \? " locked" : ""\}\" data-preset=/],
-  ["强制模式: 新增项守卫", /if \(forceLocked\(\)\) \{ lockToast\(LOCK_NAME\[kind\] \|\| "该名单"\); return; \}/],
-  ["强制模式: 渲染时调用锁定提示", /applyLockNote\("#sitesLockNote", locked,/],
+  ["强制模式: 硬锁行整行变灰", /row\.classList\.toggle\("locked", !!locked\)/],
+  ["强制模式: 屏蔽网页提示位", /id="sitesLockNote"/],
+  ["强制模式: 屏蔽进程提示位", /id="procLockNote"/],
+  ["强制模式: 白名单提示位", /id="wlLockNote"/],
+  ["强制模式: 同步拉取硬锁提示位", /id="syncLockNote"/],
+  ["强制模式: 渲染时调用提示", /applyLockNote\("#sitesLockNote", locked,/],
+  ["强制模式: 云端拉取硬锁 toast", /「从云端拉取配置」不可用/],
+  ["强制模式: 名单列表不再禁用", /renderList\("#siteList", cfg\.blockedSites, "site"\)/],
+  ["强制模式: 强制卡片同步说明", /「屏蔽网页 \/ 屏蔽进程 \/ 白名单」仍可编辑/],
   // 首屏健壮性 (开机后空白页回归防护)
   ["首屏分接口结算 allSettled", /Promise\.allSettled\(/],
   ["首屏退避重试 bootRetry", /function bootRetry\(/],
@@ -114,9 +126,11 @@ markers.forEach(([name, re]) => rep(name, re.test(html)));
 /* ---------- 2b. 后端标记 (空白页根因: /api/account 联网阻塞单线程 HTTP 服务) ---------- */
 const coreFile = path.join(__dirname, "..", "src", "core.ps1");
 const uiFile = path.join(__dirname, "..", "src", "webui.ps1");
+const engineFile = path.join(__dirname, "..", "src", "awayfromshorts.ps1");
 try {
   const core = fs.readFileSync(coreFile, "utf8");
   const ui = fs.readFileSync(uiFile, "utf8");
+  const engine = fs.readFileSync(engineFile, "utf8");
   const backend = [
     ["后端: /api/account 本地缓存优先", /hasCache/, core],
     ["后端: 用户信息缓存落盘", /function Save-AfsAccountCache/, core],
@@ -129,20 +143,32 @@ try {
     ["后端: activity 读取走重试+进程内缓存", /Read-AfsTextRetry -Path \$p[\s\S]{0,200}afsActivityCache/, core],
     ["后端: stats 落盘用原子写", /Write-AfsTextAtomic -Path \(Get-AfsStatsPath\)/, core],
     ["后端: activity 落盘用原子写", /Write-AfsTextAtomic -Path \(Get-AfsActivityPath\)/, core],
-    // 强制模式开启期间的"不可更改"守卫 (防破戒: 改名单 / 关开关 / 拉云端配置都能绕过)
-    // 判据集中在 core.ps1 的 Test-AfsConfigLockViolation, 离线回归见 tools/verify-lock.ps1
+    // 强制模式开启期间的改动处理 (防破戒):
+    //   硬拒 = 屏蔽星期 / 屏蔽时段 (它们定义了"何时算非屏蔽时段")
+    //   可排队 = 屏蔽网页 / 屏蔽进程 / 白名单 (生效时段内先入队, 非屏蔽时段由引擎自动落地)
+    // 判据集中在 core.ps1 的 Get-AfsConfigLockDiff, 离线回归见 tools/verify-lock.ps1
     ["后端: 名单签名归一化函数", /function Get-AfsListSignature/, core],
-    ["后端: 锁定守卫总入口", /function Test-AfsConfigLockViolation/, core],
-    ["后端: 锁定屏蔽星期", /Get-AfsListSignature \$Current\.schedule\.days/, core],
-    ["后端: 锁定屏蔽时段", /Get-AfsListSignature \$curWin\) -ne \(Get-AfsListSignature \$newWin/, core],
-    ["后端: 锁定屏蔽网页名单", /Get-AfsListSignature \$Current\.blockedSites/, core],
-    ["后端: 锁定屏蔽进程名单", /Get-AfsListSignature \$Current\.blockedProcesses/, core],
-    ["后端: 锁定网站屏蔽总开关", /\[bool\]\$Current\.blockWebsites -ne \[bool\]\$Incoming\.blockWebsites/, core],
-    ["后端: 锁定 Edge 工作区名单", /Get-AfsListSignature \(\$Current\.browser\)\.windows/, core],
-    ["后端: 锁定浏览器拦截开关", /\[bool\]\(\$Current\.browser\)\.enabled/, core],
-    ["后端: 锁定白名单域名", /Get-AfsListSignature \(\$Current\.whitelist\)\.sites/, core],
-    ["后端: 锁定白名单进程", /Get-AfsListSignature \(\$Current\.whitelist\)\.processes/, core],
-    ["后端: 面板调用统一守卫", /Test-AfsConfigLockViolation -Current \$curCfg -Incoming \$inCfg/, ui],
+    ["后端: 名单差异摘要", /function Get-AfsListDelta/, core],
+    ["后端: 锁定分类(硬拒/可排队)", /function Get-AfsConfigLockDiff/, core],
+    ["后端: 兼容入口 Test-AfsConfigLockViolation", /function Test-AfsConfigLockViolation/, core],
+    ["后端: 屏蔽星期=硬拒", /Get-AfsListSignature \$Current\.schedule\.days/, core],
+    ["后端: 屏蔽时段=硬拒", /Get-AfsListSignature \$curWin\) -ne \(Get-AfsListSignature \$newWin/, core],
+    ["后端: 屏蔽网页列入可排队", /\$queueKeys\.Add\('sites'\)/, core],
+    ["后端: 屏蔽进程列入可排队", /\$queueKeys\.Add\('processes'\)/, core],
+    ["后端: 白名单列入可排队", /\$queueKeys\.Add\('wlSites'\)/, core],
+    ["后端: 排队补丁生成", /function New-AfsPendingPatch/, core],
+    ["后端: 队列落盘 pending-config.json", /function Save-AfsPendingQueue/, core],
+    ["后端: 队列读取", /function Read-AfsPendingQueue/, core],
+    ["后端: 队列清除", /function Remove-AfsPendingQueue/, core],
+    ["后端: 队列落地入口", /function Invoke-AfsPendingApply/, core],
+    ["后端: 生效时段内不落地", /reason = 'force-active'/, core],
+    ["后端: 面板调用分类判据", /Get-AfsConfigLockDiff -Current \$curCfg -Incoming \$inCfg/, ui],
+    ["后端: 生效时段内改为排队", /Save-AfsPendingQueue -Current \$curCfg -Incoming \$inCfg/, ui],
+    ["后端: 保存响应带 queued", /queued\s+= \$true/, ui],
+    ["后端: 排队清除接口", /'\/api\/pending\/clear'/, ui],
+    ["后端: config 接口带 pending", /pending\s+= \(Read-AfsPendingQueue\)/, ui],
+    ["后端: status 接口带 pending", /pending\s+= \(Read-AfsPendingQueue\)/, ui],
+    ["后端: 主引擎落地排队", /Invoke-AfsPendingApply -Config \$cfg/, engine],
     ["后端: 强制中禁止云端拉取覆盖", /强制模式开启中, 无法从云端拉取配置/, core],
   ];
   backend.forEach(([name, re, src]) => rep(name, re.test(src)));

@@ -5,7 +5,7 @@
 # ============================================================
 
 $script:AFS_NAME        = 'AwayFromShorts'
-$script:AFS_VERSION     = '1.3.6'
+$script:AFS_VERSION     = '1.3.7'
 $script:AFS_MARK_START  = "# >>> $($script:AFS_NAME) >>> (managed by AwayFromShorts - do not edit)"
 $script:AFS_MARK_END    = "# <<< $($script:AFS_NAME) <<<"
 # 这些进程永远不杀,防止把系统/本工具自己弄死
@@ -168,53 +168,220 @@ function Get-AfsListSignature {
     return (@($arr | Sort-Object -Unique) -join '|')
 }
 
-# 强制模式开启期间, 哪些配置改动必须被拒绝? (防破戒)
-# 返回 $null = 无违规(可保存); 否则返回拒绝原因(字符串, 直接展示给用户)。
-# 锁定范围: 屏蔽星期 / 屏蔽时段 / 屏蔽网页(域名+总开关+Edge工作区+浏览器拦截) / 屏蔽进程 / 白名单
-# 抽成独立函数是为了能脱离 HTTP 服务做离线回归测试。
-function Test-AfsConfigLockViolation {
-    param($Current, $Incoming)
-    if ($null -eq $Current -or $null -eq $Incoming) { return $null }
+# 名单差异摘要: 返回 '+ 新增项' / '- 删除项' (大小写不敏感), 用于给用户看"排队了什么"
+function Get-AfsListDelta {
+    param($Old, $New)
+    $oldArr = @(Normalize-AfsList $Old | ForEach-Object { if ($null -ne $_) { ([string]$_).Trim() } } | Where-Object { $_ })
+    $newArr = @(Normalize-AfsList $New | ForEach-Object { if ($null -ne $_) { ([string]$_).Trim() } } | Where-Object { $_ })
+    $oldSet = @{}
+    foreach ($x in $oldArr) { $oldSet[$x.ToLowerInvariant()] = $true }
+    $newSet = @{}
+    foreach ($x in $newArr) { $newSet[$x.ToLowerInvariant()] = $true }
+    $out = New-Object System.Collections.ArrayList
+    foreach ($x in $newArr) { if (-not $oldSet.ContainsKey($x.ToLowerInvariant())) { [void]$out.Add("+ $x") } }
+    foreach ($x in $oldArr) { if (-not $newSet.ContainsKey($x.ToLowerInvariant())) { [void]$out.Add("- $x") } }
+    ,@($out)
+}
 
-    # 1) 屏蔽计划: 改星期或时段会让强制模式当天失效
+# 强制模式开启期间, 把配置改动分成两类 (防破戒):
+#   硬拒 hard  : 屏蔽星期 / 屏蔽时段 —— "什么时候算非屏蔽时段"正是由它们定义, 参与排队会让排队规则自己失效
+#   可排队 queue: 屏蔽网页(域名 / 总开关 / Edge 工作区 / 浏览器拦截) / 屏蔽进程 / 白名单
+#                —— 生效时段内先存进队列, 等本次屏蔽时段结束再自动应用; 既不影响当前这一轮强制, 用户也不用干等
+# 返回 @{ any; hardKeys; hardMsg; queueKeys; queueLabels; queueMsg }
+# 抽成独立函数是为了能脱离 HTTP 服务做离线回归测试。
+function Get-AfsConfigLockDiff {
+    param($Current, $Incoming)
+    $res = @{ any = $false; hardKeys = @(); hardMsg = $null; queueKeys = @(); queueLabels = @(); queueMsg = $null }
+    if ($null -eq $Current -or $null -eq $Incoming) { return $res }
+
+    $hardKeys    = New-Object System.Collections.ArrayList
+    $queueKeys   = New-Object System.Collections.ArrayList
+    $queueLabels = New-Object System.Collections.ArrayList
+
+    # 1) 屏蔽计划: 硬拒
     if ((Get-AfsListSignature $Current.schedule.days) -ne (Get-AfsListSignature $Incoming.schedule.days)) {
-        return '强制模式开启中, 无法更改「屏蔽星期」(防破戒)。请先在「强制模式」卡片关闭强制模式, 再修改屏蔽日期。'
+        [void]$hardKeys.Add('schedule.days')
+        if (-not $res.hardMsg) {
+            $res.hardMsg = '强制模式开启中, 无法更改「屏蔽星期」(防破戒)。屏蔽星期 / 屏蔽时段不参与排队 —— 它们定义了"何时算非屏蔽时段", 改了排队规则本身就会失效。请先在「强制模式」卡片关闭强制模式, 再修改屏蔽日期。'
+        }
     }
     $curWin = @(Normalize-AfsList $Current.schedule.windows | Where-Object { $_ } | ForEach-Object { "$($_.start)-$($_.end)" })
     $newWin = @(Normalize-AfsList $Incoming.schedule.windows | Where-Object { $_ } | ForEach-Object { "$($_.start)-$($_.end)" })
     if ((Get-AfsListSignature $curWin) -ne (Get-AfsListSignature $newWin)) {
-        return '强制模式开启中, 无法更改「屏蔽时段」(防破戒)。请先在「强制模式」卡片关闭强制模式, 再修改时间段。'
+        [void]$hardKeys.Add('schedule.windows')
+        if (-not $res.hardMsg) {
+            $res.hardMsg = '强制模式开启中, 无法更改「屏蔽时段」(防破戒)。屏蔽星期 / 屏蔽时段不参与排队, 请先在「强制模式」卡片关闭强制模式, 再修改屏蔽时间段。'
+        }
     }
 
-    # 2) 屏蔽网页: 域名名单 / 网站屏蔽总开关 / Edge 工作区名单 / 浏览器拦截开关
+    # 2) 屏蔽网页: 可排队
     if ((Get-AfsListSignature $Current.blockedSites) -ne (Get-AfsListSignature $Incoming.blockedSites)) {
-        return '强制模式开启中, 无法更改「屏蔽网页」域名名单(防破戒: 增删域名等于直接放行)。请先关闭强制模式, 再修改网站屏蔽列表。'
+        [void]$queueKeys.Add('sites');        [void]$queueLabels.Add('「屏蔽网页」域名名单')
     }
     if ([bool]$Current.blockWebsites -ne [bool]$Incoming.blockWebsites) {
-        return '强制模式开启中, 无法更改「屏蔽网站」总开关(防破戒)。请先关闭强制模式, 再开关网站屏蔽。'
+        [void]$queueKeys.Add('webSwitch');    [void]$queueLabels.Add('「屏蔽网站」总开关')
     }
     if ((Get-AfsListSignature ($Current.browser).windows) -ne (Get-AfsListSignature ($Incoming.browser).windows)) {
-        return '强制模式开启中, 无法更改「屏蔽 Edge 工作区」名单(防破戒)。请先关闭强制模式, 再修改工作区列表。'
+        [void]$queueKeys.Add('browserWindows'); [void]$queueLabels.Add('「屏蔽 Edge 工作区」名单')
     }
     if (([bool]($Current.browser).enabled -ne [bool]($Incoming.browser).enabled) -or
         ([bool]($Current.browser).urlBlock -ne [bool]($Incoming.browser).urlBlock)) {
-        return '强制模式开启中, 无法更改浏览器屏蔽开关(防破戒)。请先关闭强制模式, 再调整浏览器拦截设置。'
+        [void]$queueKeys.Add('browserSwitch');  [void]$queueLabels.Add('浏览器屏蔽开关')
     }
 
-    # 3) 屏蔽进程: 删掉进程等于直接放行
+    # 3) 屏蔽进程: 可排队
     if ((Get-AfsListSignature $Current.blockedProcesses) -ne (Get-AfsListSignature $Incoming.blockedProcesses)) {
-        return '强制模式开启中, 无法更改「屏蔽进程」名单(防破戒: 删除进程等于直接放行)。请先关闭强制模式, 再修改进程屏蔽列表。'
+        [void]$queueKeys.Add('processes');    [void]$queueLabels.Add('「屏蔽进程」名单')
     }
 
-    # 4) 白名单: 加入白名单同样能绕开屏蔽
+    # 4) 白名单: 可排队 (加入白名单同样能绕开屏蔽, 但没必要把用户的调整彻底堵死 —— 反正只在非屏蔽时段才落地)
     if ((Get-AfsListSignature ($Current.whitelist).sites) -ne (Get-AfsListSignature ($Incoming.whitelist).sites)) {
-        return '强制模式开启中, 无法更改「白名单域名」(防破戒: 加入白名单会变相放行)。请先关闭强制模式, 再修改白名单。'
+        [void]$queueKeys.Add('wlSites');      [void]$queueLabels.Add('「白名单域名」')
     }
     if ((Get-AfsListSignature ($Current.whitelist).processes) -ne (Get-AfsListSignature ($Incoming.whitelist).processes)) {
-        return '强制模式开启中, 无法更改「白名单进程」(防破戒: 加入白名单会变相放行)。请先关闭强制模式, 再修改白名单。'
+        [void]$queueKeys.Add('wlProcs');      [void]$queueLabels.Add('「白名单进程」')
     }
 
-    return $null
+    $res.hardKeys    = @($hardKeys)
+    $res.queueKeys   = @($queueKeys)
+    $res.queueLabels = @($queueLabels)
+    $res.any         = (($hardKeys.Count + $queueKeys.Count) -gt 0)
+    if ($queueKeys.Count -gt 0) {
+        $res.queueMsg = '强制模式生效中, ' + (@($queueLabels) -join ' / ') + ' 的改动无法立即生效, 已进入排队。'
+    }
+    $res
+}
+
+# 兼容入口: 返回任一锁定原因(字符串), 无锁定返回 $null。
+# 旧调用方与 tools/verify-lock.ps1 的离线回归继续用它 (有改动被拦 = 非空)。
+function Test-AfsConfigLockViolation {
+    param($Current, $Incoming)
+    $d = Get-AfsConfigLockDiff -Current $Current -Incoming $Incoming
+    if ($d.hardMsg)  { return $d.hardMsg }
+    if ($d.queueMsg) { return $d.queueMsg }
+    $null
+}
+
+# ---------- 待生效队列 (排队) ----------
+# 强制模式生效时段内, 屏蔽名单类改动不再直接丢给用户一句"关掉强制模式再来",
+# 而是先落到 pending-config.json, 等本次屏蔽时段结束(即进入非屏蔽时段)由引擎自动合并进 config.json。
+# 这样既不影响当前这一轮强制, 也不用用户为了加一个域名就得先把强制模式关掉。
+
+function Get-AfsPendingPath {
+    (Join-Path (Split-Path (Get-AfsConfigPath)) 'pending-config.json')
+}
+
+function Read-AfsPendingQueue {
+    $p = Get-AfsPendingPath
+    if (-not (Test-Path $p)) { return $null }
+    try {
+        $q = Read-AfsJson -Path $p
+        if ($null -eq $q -or $null -eq $q.patch) { return $null }
+        $q
+    } catch { $null }
+}
+
+function Remove-AfsPendingQueue {
+    $p = Get-AfsPendingPath
+    if (Test-Path $p) { Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue }
+}
+
+# 由"当前生效配置"与"用户期望配置"的差异, 生成只含可排队字段的补丁
+# 返回 @{ patch; grouped; total } —— total=0 表示锁定字段无差异(此时应清空队列)
+function New-AfsPendingPatch {
+    param($Current, $Incoming)
+    $patch   = @{}
+    $grouped = @{ sites = @(); switches = @(); browser = @(); processes = @(); whitelist = @() }
+
+    # 屏蔽网页域名
+    if ((Get-AfsListSignature $Current.blockedSites) -ne (Get-AfsListSignature $Incoming.blockedSites)) {
+        $patch.blockedSites = @(Normalize-AfsList $Incoming.blockedSites | ForEach-Object { ([string]$_).Trim() } | Where-Object { $_ })
+        $dSites = Get-AfsListDelta -Old $Current.blockedSites -New $Incoming.blockedSites
+        $grouped.sites = [string[]]@($dSites)
+    }
+    if ([bool]$Current.blockWebsites -ne [bool]$Incoming.blockWebsites) {
+        $patch.blockWebsites = [bool]$Incoming.blockWebsites
+        $grouped.switches = @($grouped.switches) + @('网站屏蔽总开关 -> ' + $(if ([bool]$Incoming.blockWebsites) { '开启' } else { '关闭' }))
+    }
+    # Edge 工作区 / 浏览器拦截开关 (同属 browser, 合并进一个 patch 节点)
+    $bPatch = @{}
+    $bLines = New-Object System.Collections.ArrayList
+    if ((Get-AfsListSignature ($Current.browser).windows) -ne (Get-AfsListSignature ($Incoming.browser).windows)) {
+        $bPatch.windows = @(Normalize-AfsList $Incoming.browser.windows | ForEach-Object { ([string]$_).Trim() } | Where-Object { $_ })
+        $dWin = Get-AfsListDelta -Old $Current.browser.windows -New $Incoming.browser.windows
+        foreach ($l in @($dWin)) { [void]$bLines.Add($l) }
+    }
+    if ([bool]($Current.browser).enabled -ne [bool]($Incoming.browser).enabled) {
+        $bPatch.enabled = [bool]$Incoming.browser.enabled
+        [void]$bLines.Add('工作区屏蔽开关 -> ' + $(if ([bool]$Incoming.browser.enabled) { '开启' } else { '关闭' }))
+    }
+    if ([bool]($Current.browser).urlBlock -ne [bool]($Incoming.browser).urlBlock) {
+        $bPatch.urlBlock = [bool]$Incoming.browser.urlBlock
+        [void]$bLines.Add('网址拦截开关 -> ' + $(if ([bool]$Incoming.browser.urlBlock) { '开启' } else { '关闭' }))
+    }
+    if ($bPatch.Count -gt 0) { $patch.browser = $bPatch; $grouped.browser = [string[]]$bLines.ToArray() }
+
+    # 屏蔽进程
+    if ((Get-AfsListSignature $Current.blockedProcesses) -ne (Get-AfsListSignature $Incoming.blockedProcesses)) {
+        $patch.blockedProcesses = @(Normalize-AfsList $Incoming.blockedProcesses | ForEach-Object { ([string]$_).Trim() } | Where-Object { $_ })
+        $dProc = Get-AfsListDelta -Old $Current.blockedProcesses -New $Incoming.blockedProcesses
+        $grouped.processes = [string[]]@($dProc)
+    }
+    # 白名单
+    $wLines = New-Object System.Collections.ArrayList
+    $wPatch = @{}
+    if ((Get-AfsListSignature ($Current.whitelist).sites) -ne (Get-AfsListSignature ($Incoming.whitelist).sites)) {
+        $wPatch.sites = @(Normalize-AfsList $Incoming.whitelist.sites | ForEach-Object { ([string]$_).Trim() } | Where-Object { $_ })
+        $dWs = Get-AfsListDelta -Old $Current.whitelist.sites -New $Incoming.whitelist.sites
+        foreach ($l in @($dWs)) { [void]$wLines.Add('域名 ' + $l) }
+    }
+    if ((Get-AfsListSignature ($Current.whitelist).processes) -ne (Get-AfsListSignature ($Incoming.whitelist).processes)) {
+        $wPatch.processes = @(Normalize-AfsList $Incoming.whitelist.processes | ForEach-Object { ([string]$_).Trim() } | Where-Object { $_ })
+        $dWp = Get-AfsListDelta -Old $Current.whitelist.processes -New $Incoming.whitelist.processes
+        foreach ($l in @($dWp)) { [void]$wLines.Add('进程 ' + $l) }
+    }
+    if ($wPatch.Count -gt 0) { $patch.whitelist = $wPatch; $grouped.whitelist = [string[]]$wLines.ToArray() }
+
+    $total = 0
+    foreach ($k in @('sites','switches','browser','processes','whitelist')) { $total += @($grouped[$k]).Count }
+
+    @{ patch = $patch; grouped = $grouped; total = $total }
+}
+
+function Save-AfsPendingQueue {
+    param($Current, $Incoming, [string]$Reason = '强制模式生效中')
+    $np = New-AfsPendingPatch -Current $Current -Incoming $Incoming
+    if ([int]$np.total -le 0) { Remove-AfsPendingQueue; return $null }
+    $old = Read-AfsPendingQueue
+    $q = @{
+        version   = 1
+        createdAt = $(if ($old -and $old.createdAt) { $old.createdAt } else { (Get-Date).ToString('o') })
+        updatedAt = (Get-Date).ToString('o')
+        reason    = $Reason
+        total     = [int]$np.total
+        grouped   = $np.grouped
+        patch     = $np.patch
+    }
+    Write-AfsJson -Path (Get-AfsPendingPath) -Object $q
+    $q
+}
+
+# 把排队内容合并进 config.json。
+# 只在"非强制生效时段"(= 非屏蔽时段)才落地 —— 那时加/减名单没有任何放行收益, 用户随时可改。
+# 返回 @{ applied; reason; total }
+function Invoke-AfsPendingApply {
+    param($Config = $null, [switch]$IgnoreWindow)
+    $q = Read-AfsPendingQueue
+    if (-not $q) { return @{ applied = $false; reason = 'empty'; total = 0 } }
+    if (-not $Config) { $Config = Get-AfsConfig }
+    if (-not $IgnoreWindow) {
+        $fa = Test-AfsForceActive -Config $Config
+        if ($fa.active) { return @{ applied = $false; reason = 'force-active'; total = [int]$q.total; pending = $q } }
+    }
+    $merged = Merge-AfsDeep -Base $Config -Overlay $q.patch
+    Set-AfsConfigSafe -InputConfig $merged | Out-Null
+    Remove-AfsPendingQueue
+    @{ applied = $true; reason = 'ok'; total = [int]$q.total; patch = $q.patch }
 }
 
 # 校验 + 规范化 + 落盘

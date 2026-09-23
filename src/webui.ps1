@@ -78,6 +78,8 @@ function Get-AfsStatusObj {
         nextActive  = Get-AfsNextActiveTime -Config $cfg
         lastRun     = $lastRun
         config      = $cfg
+        forceActive = ((Test-AfsForceActive -Config $cfg).active)
+        pending     = (Read-AfsPendingQueue)
     }
 }
 
@@ -143,7 +145,15 @@ $handler = {
         }
         if ($path -eq '/api/ping') { Send-AfsJson -Stream $stream -Status 200 -Obj @{ ok = $true; pong = $true }; return }
         if ($method -eq 'GET' -and $path -eq '/api/config') {
-            Send-AfsJson -Stream $stream -Status 200 -Obj @{ ok = $true; config = (Get-AfsConfig) }
+            # 顺手尝试把排队内容落地: 只有"非强制生效时段"才会真的合并进 config, 无队列时几乎零成本
+            try { Invoke-AfsPendingApply | Out-Null } catch { }
+            $cfgNow = Get-AfsConfig
+            Send-AfsJson -Stream $stream -Status 200 -Obj @{
+                ok          = $true
+                config      = $cfgNow
+                forceActive = (Test-AfsForceActive -Config $cfgNow).active
+                pending     = (Read-AfsPendingQueue)
+            }
             return
         }
         if ($method -eq 'GET' -and $path -eq '/api/status') {
@@ -161,24 +171,53 @@ $handler = {
             try {
                 $o = $body | ConvertFrom-Json -ErrorAction Stop
                 $inCfg = ConvertTo-AfsHashtable $o
+                # 先把已有排队内容落地 (如果此刻已经不在强制生效时段)
+                try { Invoke-AfsPendingApply | Out-Null } catch { }
                 $curCfg = Get-AfsConfig
                 $forceNow = Test-AfsForceActive -Config $curCfg
                 if ($forceNow.active -and -not [bool]$inCfg.enabled) {
                     throw "强制模式生效中 (可先关闭强制模式, 再关闭屏蔽)"
                 }
-                # 强制模式开启期间锁定「屏蔽计划」与「屏蔽名单」(防破戒):
-                # 改星期/时段能让强制模式当天失效; 改屏蔽进程/网页名单、关总开关、加白名单等于直接放行。
-                # 判据集中在 core.ps1 的 Test-AfsConfigLockViolation (可离线回归测试)。
+                # 强制模式开启期间:
+                #   「屏蔽星期 / 屏蔽时段」-> 硬拒 (它们正是"何时算非屏蔽时段"的定义, 改了就绕开强制)
+                #   「屏蔽网页 / 屏蔽进程 / 白名单」-> 生效时段内先排队, 等本次时段结束由引擎自动生效
+                #   判据集中在 core.ps1 的 Get-AfsConfigLockDiff (可离线回归测试)。
                 if ([bool]$curCfg.force.enabled) {
-                    $violation = Test-AfsConfigLockViolation -Current $curCfg -Incoming $inCfg
-                    if ($violation) { throw $violation }
+                    $diff = Get-AfsConfigLockDiff -Current $curCfg -Incoming $inCfg
+                    if ($diff.hardMsg) { throw $diff.hardMsg }
+                    if (@($diff.queueKeys).Count -gt 0 -and $forceNow.active) {
+                        $q = Save-AfsPendingQueue -Current $curCfg -Incoming $inCfg -Reason '强制模式生效中'
+                        Send-AfsJson -Stream $stream -Status 200 -Obj @{
+                            ok          = $true
+                            queued      = $true
+                            note        = '已排队: 将在本次屏蔽时段结束后自动生效'
+                            config      = $curCfg
+                            forceActive = $true
+                            pending     = $q
+                        }
+                        return
+                    }
                 }
                 $newCfg = Set-AfsConfigSafe -InputConfig $inCfg
+                # 期望状态已整份写入 config, 排队内容不再需要
+                Remove-AfsPendingQueue
                 Send-AfsJson -Stream $stream -Status 200 -Obj @{
-                    ok = $true
-                    note = '已保存, 屏蔽引擎将在 1 分钟内应用'
-                    config = $newCfg
+                    ok          = $true
+                    queued      = $false
+                    note        = '已保存, 屏蔽引擎将在 1 分钟内应用'
+                    config      = $newCfg
+                    forceActive = (Test-AfsForceActive -Config $newCfg).active
+                    pending     = $null
                 }
+            } catch {
+                Send-AfsJson -Stream $stream -Status 400 -Obj @{ ok = $false; error = $_.Exception.Message }
+            }
+            return
+        }
+        if ($method -eq 'POST' -and $path -eq '/api/pending/clear') {
+            try {
+                Remove-AfsPendingQueue
+                Send-AfsJson -Stream $stream -Status 200 -Obj @{ ok = $true; queued = $false; pending = $null; note = '已撤销排队中的改动' }
             } catch {
                 Send-AfsJson -Stream $stream -Status 400 -Obj @{ ok = $false; error = $_.Exception.Message }
             }

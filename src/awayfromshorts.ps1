@@ -19,6 +19,20 @@ try {
     $appDir  = Split-Path (Get-AfsConfigPath)
     $logPath = Join-Path $appDir 'last-run.json'
 
+    # 排队内容落地: 强制生效时段内不动; 一旦进入非屏蔽时段(时段结束 / 非所选星期) 就自动合并进 config。
+    # 这是"屏蔽名单改动排队到非屏蔽时段生效"的执行者, 面板不负责后台计时。
+    if (-not $Simulate) {
+        try {
+            $qa = Invoke-AfsPendingApply -Config $cfg
+            if ($qa.applied) {
+                Write-Output ("AFS-PENDING: applied {0} queued change(s)" -f $qa.total)
+                $cfg = Get-AfsConfig   # 配置已变, 重新读取再执行本次强制
+            }
+        } catch {
+            Write-Output ("AFS-PENDING ERROR: {0}" -f $_.Exception.Message)
+        }
+    }
+
     $result = Invoke-AfsLocked -Action {
         Invoke-AfsEnforce -Config $cfg -HostsPath $HostsPath -LogPath $logPath -Simulate:$Simulate
     }

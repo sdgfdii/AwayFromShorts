@@ -190,6 +190,16 @@
   .note.danger { background: rgba(255,93,93,.08); border-color: rgba(255,93,93,.3); color: #e8b9b9; }
   .red-note { background: rgba(255,93,93,.1); border: 1px solid rgba(255,93,93,.4);
     border-radius: 9px; padding: 10px 13px; font-size: 12.5px; color: #f0c4c4; margin-top: 12px; line-height: 1.6; }
+  /* 排队提示: 黄色(与红色硬锁区分 —— 名单类改动不阻塞操作, 只是延后生效) */
+  .queue-note { background: rgba(255,176,32,.09); border: 1px solid rgba(255,176,32,.38);
+    border-radius: 9px; padding: 10px 13px; font-size: 12.5px; color: #f3d6a0; margin-top: 12px; line-height: 1.6; }
+  .queue-note .qbox { margin-top: 8px; padding: 8px 10px; border-radius: 8px;
+    background: rgba(255,176,32,.12); border: 1px solid rgba(255,176,32,.3); color: #ffdfae; }
+  .qbox .pending-clear { margin-left: 6px; }
+  .pill.queue { color: #ffb020; border-color: rgba(255,176,32,.45); background: rgba(255,176,32,.12); }
+  .pill.queue::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+    background: #ffb020; margin-right: 6px; vertical-align: middle; animation: pillPulse 1.6s ease-in-out infinite; }
+  @keyframes pillPulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
   button.btn.danger { background: #b33; border-color: #d55; }
   button.btn.danger:hover { background: #c44; }
   button.btn:disabled { opacity: .45; cursor: not-allowed; }
@@ -868,6 +878,7 @@
       <h1 id="panelTitle">状态</h1>
       <div class="right">
         <span class="pill" id="topPill">加载中…</span>
+        <span class="pill queue" id="pendingPill" style="display:none" title="强制模式生效期间的名单改动会排队, 到非屏蔽时段自动生效">⏳ 待生效</span>
         <button class="btn primary" id="saveBtn">💾 保存更改</button>
       </div>
     </div>
@@ -1213,6 +1224,8 @@ let activity = null;
 let actLast = 0;        // activity 上次刷新时间; 切到「每日/周/月」视图时据此判断要不要重拉
 let dirty = false;
 let autoFail = 0;   // 自动刷新连续失败次数
+let pendingInfo = null;      // 排队中的改动(后端 pending-config.json): { total, grouped, patch, createdAt }
+let forceActiveNow = false;  // 当前是否正处于强制生效时段(后端判定, 用于提示文案)
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -1286,6 +1299,37 @@ const WD_CN = ["", "周一", "周二", "周三", "周四", "周五", "周六", "
 // 强制模式开启期间, 屏蔽星期锁定不可改 (防破戒: 改星期会让强制模式当天不生效)
 const forceLocked = () => !!(cfg && cfg.force && cfg.force.enabled);
 
+/* ---------- 排队中的改动 ----------
+   强制模式生效时段内, 「屏蔽网页 / 屏蔽进程 / 白名单」的改动不再被拒绝, 而是由后端存成
+   pending-config.json (只含锁定字段的补丁), 等本次屏蔽时段结束自动合并进 config。
+   这里把补丁叠进 cfg, 让用户看到的是"期望状态"; 未生效的部分用黄色提示条 + 顶栏胶囊标出来。 */
+function deepMergePatch(target, patch) {
+  Object.keys(patch || {}).forEach(k => {
+    const pv = patch[k], tv = target[k];
+    if (pv && typeof pv === "object" && !Array.isArray(pv) && tv && typeof tv === "object" && !Array.isArray(tv)) {
+      deepMergePatch(tv, pv);   // browser / whitelist 是嵌套对象: 整体替换会丢掉没改的键
+    } else {
+      target[k] = pv;
+    }
+  });
+  return target;
+}
+function applyPendingToView(p) {
+  pendingInfo = (p && p.total) ? p : null;
+  if (pendingInfo && pendingInfo.patch && cfg) deepMergePatch(cfg, pendingInfo.patch);
+  renderPendingPill();
+}
+function renderPendingPill() {
+  const el = $("#pendingPill");
+  if (!el) return;
+  if (pendingInfo && pendingInfo.total) {
+    el.style.display = "";
+    el.textContent = "⏳ 待生效 " + pendingInfo.total + " 项";
+  } else {
+    el.style.display = "none";
+  }
+}
+
 /* ================= 加载 ================= */
 /* 开机后首屏偶发空白的原因: 以前这里是 Promise.all(5 个接口), 只要有一个慢/失败,
    整块渲染就不会执行, 页面停在空壳; 而面板服务是单线程顺序处理请求 —— 开机初期
@@ -1310,8 +1354,11 @@ async function load() {
 
   if (c.status === "fulfilled" && c.value && c.value.config) {
     cfg = c.value.config;
+    forceActiveNow = !!c.value.forceActive;
+    applyPendingToView(c.value.pending);   // 把排队中的改动叠进展示态: 用户看到的是"期望状态"
     $("#aboutPort").textContent = (cfg.web && cfg.web.port) || 8737;
     renderSchedule(); renderForce(); renderSites(); renderBrowser(); renderProcesses(); renderWhitelist();
+    if (acct !== null) renderSync();
   }
   if (s.status === "fulfilled" && s.value) {
     status = s.value;
@@ -1582,7 +1629,7 @@ function renderSchedule() {
       const fw = ((cfg.force || {}).weekdays || []).filter(x => x);
       const fwTxt = (!fw.length || fw.length >= 7) ? "每天" : fw.map(d => WD_CN[d]).join("、");
       ln.style.display = "";
-      ln.innerHTML = `🔒 <b>强制模式已开启</b>(强制星期: ${fwTxt}) — 强制模式开启期间<b>「屏蔽星期」「屏蔽时段」「屏蔽进程」「屏蔽网页」「白名单」均已锁定, 无法修改</b>(防破戒: 改星期或时段会让强制模式当天失效, 改名单或加白名单等于直接放行)。如需调整, 请先在上方「强制模式」卡片中<b>关闭强制模式</b>。`;
+      ln.innerHTML = `🔒 <b>强制模式已开启</b>(强制星期: ${fwTxt}) — <b>「屏蔽星期」「屏蔽时段」已锁定, 无法修改</b>(防破戒: 改星期或时段会让强制模式当天失效)。「屏蔽网页 / 屏蔽进程 / 白名单」仍可编辑, 改动会<b>排队到非屏蔽时段自动生效</b>。想改星期或时段, 请先在上方「强制模式」卡片中<b>关闭强制模式</b>。`;
     } else {
       ln.style.display = "none";
     }
@@ -1617,7 +1664,7 @@ function renderForce() {
   if (f.enabled) {
     fa.innerHTML =
       `<div class="note">🔒 <b>强制模式已开启</b>(星期循环): <b>${wdShow(fWds)}</b> 的屏蔽时段内自动强制。<br>当前<b>不在强制时段</b>(屏蔽窗口外或非所选星期), 可正常使用; 进入强制时段后将无法关闭, 直到时段结束。要停用请点下方按钮。</div>` +
-      `<div class="note warn" style="margin-top:8px">📅 强制模式开启期间<b>「屏蔽星期」「屏蔽时段」「屏蔽进程」「屏蔽网页」「白名单」均已锁定, 无法修改</b>(防破戒)。如需调整, 请先点下方按钮关闭强制模式。</div>` +
+      `<div class="note warn" style="margin-top:8px">📅 强制模式开启期间<b>「屏蔽星期」「屏蔽时段」已锁定, 无法修改</b>(防破戒: 它们定义了何时算非屏蔽时段)。「屏蔽网页 / 屏蔽进程 / 白名单」仍可编辑, 改动会<b>排队到非屏蔽时段自动生效</b>。想改星期或时段, 请先点下方按钮关闭强制模式。</div>` +
       `<button class="btn danger" id="forceOffBtn">🔓 关闭强制模式</button>`;
     const off = $("#forceOffBtn");
     if (off) off.addEventListener("click", async () => {
@@ -1649,7 +1696,7 @@ function renderForce() {
   }));
   const on = $("#forceOnBtn");
   if (on) on.addEventListener("click", async () => {
-    if (!confirm("确定开启强制模式?\n\n开启后: 在所选星期(" + wdTxt(wdSel) + ")的屏蔽时段内长期强制:\n• 强制中无法关闭屏蔽 / 临时解除 / 清除临时设置 / 修改屏蔽星期 / 修改屏蔽时段\n• 强制中无法修改屏蔽进程 / 屏蔽网页名单(含网站屏蔽总开关、Edge 工作区、浏览器拦截开关)\n• 强制中无法修改白名单(加白名单 = 变相放行)\n• 强制中无法提前关闭(防破戒)\n• 非强制时段(窗口外 / 非所选星期)可手动关闭\n\n⚠️ 想清楚再开——进入强制时段就无法反悔, 只能等时段结束。")) return;
+    if (!confirm("确定开启强制模式?\n\n开启后: 在所选星期(" + wdTxt(wdSel) + ")的屏蔽时段内长期强制:\n• 强制中无法关闭屏蔽 / 临时解除 / 清除临时设置 / 修改屏蔽星期 / 修改屏蔽时段\n• 强制中「屏蔽网页 / 屏蔽进程 / 白名单」仍可编辑, 但改动会排队到非屏蔽时段自动生效\n• 强制中无法从云端拉取配置(会覆盖本机名单)\n• 强制中无法提前关闭(防破戒)\n• 非强制时段(窗口外 / 非所选星期)可手动关闭\n\n⚠️ 想清楚再开——进入强制时段就无法反悔, 只能等时段结束。")) return;
     try {
       const r = await api("/api/force", "POST", { enabled: true, weekdays: wdSel });
       toast(r.note || "强制模式已开启", "ok");
@@ -1665,12 +1712,11 @@ function presetState(preset, list) {
 
 function renderSites() {
   const locked = forceLocked();
-  setLocked("#webSwitch", locked);
   $("#webSwitch").checked = !!cfg.blockWebsites;
   $("#sitePresets").innerHTML = SITE_PRESETS.map(p => {
     const st = presetState(p, cfg.blockedSites);
-    return `<div class="preset ${st.checked ? "checked" : ""}${locked ? " locked" : ""}" data-preset="${esc(p.label)}" title="${locked ? "强制模式开启中, 屏蔽网页名单已锁定" : ""}">
-      <input type="checkbox" ${st.checked ? "checked" : ""} ${locked ? "disabled" : ""}>
+    return `<div class="preset ${st.checked ? "checked" : ""}" data-preset="${esc(p.label)}">
+      <input type="checkbox" ${st.checked ? "checked" : ""}>
       <div><div class="t">${esc(p.label)}</div><div class="d">${esc(p.domains.join(" · "))}</div></div>
     </div>`;
   }).join("");
@@ -1680,31 +1726,23 @@ function renderSites() {
     const st = presetState(p, cfg.blockedSites);
     if (st.mixed) el.querySelector("input").indeterminate = true;
   });
-  setLocked("#siteInput", locked);
-  setLocked("#addSiteBtn", locked);
-  renderList("#siteList", cfg.blockedSites, "site", locked);
+  renderList("#siteList", cfg.blockedSites, "site");
   applyLockNote("#sitesLockNote", locked, "「屏蔽网页」(域名名单 / 网站屏蔽总开关 / Edge 工作区 / 浏览器拦截开关)");
 }
 
 function renderBrowser() {
   if (!cfg.browser) cfg.browser = { enabled: true, windows: [], urlBlock: false, targets: ["edge", "chrome"] };
-  const locked = forceLocked();
-  setLocked("#browserSwitch", locked);
-  setLocked("#urlBlockSwitch", locked);
-  setLocked("#browserWinInput", locked);
-  setLocked("#addBrowserWinBtn", locked);
-  setLocked("#scanWinBtn", locked);
   $("#browserSwitch").checked = !!cfg.browser.enabled;
   $("#urlBlockSwitch").checked = !!cfg.browser.urlBlock;
-  renderList("#browserWinList", cfg.browser.windows, "bwin", locked);
+  renderList("#browserWinList", cfg.browser.windows, "bwin");
 }
 
 function renderProcesses() {
   const locked = forceLocked();
   $("#procPresets").innerHTML = PROC_PRESETS.map(p => {
     const st = presetState(p, cfg.blockedProcesses);
-    return `<div class="preset ${st.checked ? "checked" : ""}${locked ? " locked" : ""}" data-preset="${esc(p.label)}" title="${locked ? "强制模式开启中, 屏蔽进程名单已锁定" : ""}">
-      <input type="checkbox" ${st.checked ? "checked" : ""} ${locked ? "disabled" : ""}>
+    return `<div class="preset ${st.checked ? "checked" : ""}" data-preset="${esc(p.label)}">
+      <input type="checkbox" ${st.checked ? "checked" : ""}>
       <div><div class="t">${esc(p.label)}</div><div class="d">${esc(p.names.join(", "))}</div></div>
     </div>`;
   }).join("");
@@ -1713,20 +1751,14 @@ function renderProcesses() {
     const st = presetState(p, cfg.blockedProcesses);
     if (st.mixed) el.querySelector("input").indeterminate = true;
   });
-  setLocked("#procInput", locked);
-  setLocked("#addProcBtn", locked);
-  renderList("#procList", cfg.blockedProcesses, "proc", locked);
+  renderList("#procList", cfg.blockedProcesses, "proc");
   applyLockNote("#procLockNote", locked, "「屏蔽进程」");
 }
 
 function renderWhitelist() {
   const locked = forceLocked();
-  setLocked("#wlSiteInput", locked);
-  setLocked("#addWlSiteBtn", locked);
-  setLocked("#wlProcInput", locked);
-  setLocked("#addWlProcBtn", locked);
-  renderList("#wlSiteList", cfg.whitelist.sites, "wlsite", locked);
-  renderList("#wlProcList", cfg.whitelist.processes, "wlproc", locked);
+  renderList("#wlSiteList", cfg.whitelist.sites, "wlsite");
+  renderList("#wlProcList", cfg.whitelist.processes, "wlproc");
   applyLockNote("#wlLockNote", locked, "「白名单」(加入白名单会变相放行)");
 }
 
@@ -2233,23 +2265,48 @@ function statsViewMonth() {
   });
 })();
 
-/* ---------- 强制模式锁定 (防破戒) ---------- */
-// 锁定提示: 写在名单卡片里, 说明为什么不能改、怎么解锁
+/* ---------- 强制模式期间的提示 (防破戒) ---------- */
+// 「屏蔽网页 / 屏蔽进程 / 白名单」不再禁止操作 —— 改动会排队, 到非屏蔽时段自动生效;
+// 「从云端拉取配置」仍是硬锁 (拉取会覆盖本机名单与时段, 等于绕过强制)。
+const SEL_GROUP = {
+  "#sitesLockNote": ["sites", "switches", "browser"],
+  "#procLockNote": ["processes"],
+  "#wlLockNote": ["whitelist"],
+};
+function pendingItemsFor(sel) {
+  const g = (pendingInfo && pendingInfo.grouped) || {};
+  let out = [];
+  (SEL_GROUP[sel] || []).forEach(k => {
+    const v = g[k];
+    if (Array.isArray(v)) out = out.concat(v);
+    else if (v) out.push(String(v));
+  });
+  return out;
+}
 function applyLockNote(sel, locked, what) {
   const el = $(sel);
   if (!el) return;
   if (!locked) { el.style.display = "none"; return; }
   el.style.display = "";
-  el.innerHTML = `🔒 <b>强制模式已开启</b> — 强制模式开启期间<b>${what}已锁定, 无法更改</b>(防破戒: 增删名单 / 关闭开关都等于放行)。如需调整, 请先到「状态 / 屏蔽计划」页<b>关闭强制模式</b>。`;
+  if (sel === "#syncLockNote") {
+    el.className = "red-note";
+    el.innerHTML = `🔒 <b>强制模式已开启</b> — 「从云端拉取配置」在强制模式期间<b>不可用</b>(拉取会覆盖本机屏蔽名单与时段, 等于绕过强制)。如需拉取, 请先到「状态 / 屏蔽计划」页<b>关闭强制模式</b>。`;
+    return;
+  }
+  el.className = "queue-note";
+  const mine = pendingItemsFor(sel);
+  const when = forceActiveNow
+    ? "当前正在屏蔽时段内, 保存后会<b>先排队</b>。"
+    : "当前不在屏蔽时段, 保存后<b>立即生效</b>。";
+  let html = `🔒 <b>强制模式已开启</b> — ${what}仍可编辑, 改动不会丢: 会排队到<b>非屏蔽时段自动应用</b>(防破戒: 生效时段内增删名单等于直接放行)。${when}`;
+  if (mine.length) {
+    html += `<div class="qbox"><b>⏳ 已排队 ${mine.length} 项:</b> ${mine.map(esc).join("、")}`
+      + ` <button class="btn small pending-clear" type="button">↩ 撤销排队</button></div>`;
+  }
+  el.innerHTML = html;
 }
-function lockToast(what) {
-  toast(`🔒 强制模式开启中, ${what}已锁定。请先关闭强制模式再修改。`, "err");
-}
-// 名单种类 -> 界面名称(用于锁定提示)
-const LOCK_NAME = {
-  site: "「屏蔽网页」域名名单", proc: "「屏蔽进程」名单", bwin: "「屏蔽 Edge 工作区」名单",
-  wlsite: "「白名单域名」", wlproc: "「白名单进程」"
-};
+// 注: 「屏蔽网页 / 屏蔽进程 / 白名单」在强制模式期间不再禁用 —— 改动由后端排队, 到非屏蔽时段自动生效。
+//     仍被硬锁的只有「屏蔽星期 / 屏蔽时段」与「从云端拉取配置」, 它们直接 toast 说明。
 // 禁用元素本身 + 其所在的设置行(整行变灰)
 function setLocked(sel, locked) {
   const el = $(sel);
@@ -2397,17 +2454,14 @@ function markDirty() { dirty = true; }
 // 总开关
 $("#enabledSwitch").addEventListener("change", e => { cfg.enabled = e.target.checked; markDirty(); });
 $("#webSwitch").addEventListener("change", e => {
-  if (forceLocked()) { e.target.checked = !e.target.checked; lockToast("「屏蔽网站」总开关"); return; }
   cfg.blockWebsites = e.target.checked; markDirty();
 });
 $("#browserSwitch").addEventListener("change", e => {
-  if (forceLocked()) { e.target.checked = !e.target.checked; lockToast("「屏蔽 Edge 工作区」开关"); return; }
   if (!cfg.browser) cfg.browser = { enabled: true, windows: [], urlBlock: false, targets: ["edge", "chrome"] };
   cfg.browser.enabled = e.target.checked;
   markDirty();
 });
 $("#urlBlockSwitch").addEventListener("change", e => {
-  if (forceLocked()) { e.target.checked = !e.target.checked; lockToast("「拦截娱乐网站」开关"); return; }
   if (!cfg.browser) cfg.browser = { enabled: true, windows: [], urlBlock: false, targets: ["edge", "chrome"] };
   cfg.browser.urlBlock = e.target.checked;
   markDirty();
@@ -2417,7 +2471,6 @@ $("#addBrowserWinBtn").addEventListener("click", () => {
   addItem("#browserWinInput", () => cfg.browser.windows, "bwin");
 });
 $("#scanWinBtn").addEventListener("click", async () => {
-  if (forceLocked()) { lockToast("「屏蔽 Edge 工作区」名单"); return; }
   if (!cfg.browser) cfg.browser = { enabled: true, windows: [], urlBlock: false, targets: ["edge", "chrome"] };
   try {
     const r = await api("/api/browser/windows", "GET");
@@ -2473,7 +2526,6 @@ $("#addWindowBtn").addEventListener("click", () => {
 $("#sitePresets").addEventListener("click", e => {
   const el = e.target.closest(".preset");
   if (!el) return;
-  if (forceLocked()) { lockToast("「屏蔽网页」域名名单"); return; }
   const p = SITE_PRESETS.find(x => x.label === el.dataset.preset);
   const all = p.domains;
   const present = all.filter(d => cfg.blockedSites.includes(d));
@@ -2488,7 +2540,6 @@ $("#siteInput").addEventListener("keydown", e => { if (e.key === "Enter") $("#ad
 $("#procPresets").addEventListener("click", e => {
   const el = e.target.closest(".preset");
   if (!el) return;
-  if (forceLocked()) { lockToast("「屏蔽进程」名单"); return; }
   const p = PROC_PRESETS.find(x => x.label === el.dataset.preset);
   const all = p.names;
   const hasItem = d => cfg.blockedProcesses.some(x => String(x).toLowerCase() === String(d).toLowerCase());
@@ -2508,7 +2559,6 @@ $("#addWlSiteBtn").addEventListener("click", () => addItem("#wlSiteInput", v => 
 $("#addWlProcBtn").addEventListener("click", () => addItem("#wlProcInput", v => cfg.whitelist.processes, "wlproc"));
 
 function addItem(inputSel, getList, kind) {
-  if (forceLocked()) { lockToast(LOCK_NAME[kind] || "该名单"); return; }
   const input = $(inputSel);
   let v = input.value.trim();
   if (!v) return;
@@ -2528,13 +2578,29 @@ document.addEventListener("click", e => {
   const btn = e.target.closest(".del-item");
   if (!btn) return;
   const { kind, v } = btn.dataset;
-  if (forceLocked()) { lockToast(LOCK_NAME[kind] || "该名单"); return; }
   const lists = { site: cfg.blockedSites, proc: cfg.blockedProcesses, wlsite: cfg.whitelist.sites, wlproc: cfg.whitelist.processes, bwin: cfg.browser.windows };
   const list = lists[kind];
   const i = list.indexOf(v);
   if (i >= 0) list.splice(i, 1);
   if (kind === "site") renderSites(); else if (kind === "proc") renderProcesses(); else if (kind === "bwin") renderBrowser(); else renderWhitelist();
   markDirty();
+});
+
+// 撤销排队: 丢掉还没生效的改动(当前生效的配置不受影响)
+document.addEventListener("click", async e => {
+  const btn = e.target.closest(".pending-clear");
+  if (!btn) return;
+  e.preventDefault();
+  if (!confirm("撤销排队中的改动?\n\n当前生效的配置不受影响, 只是这些还没生效的改动会被丢弃。")) return;
+  btn.disabled = true;
+  try {
+    await api("/api/pending/clear", "POST", {});
+    toast("已撤销排队", "ok");
+    await load();
+  } catch (err) {
+    btn.disabled = false;
+    toast("撤销失败: " + err.message, "err");
+  }
 });
 
 // 保存
@@ -2545,11 +2611,15 @@ $("#saveBtn").addEventListener("click", async () => {
   try {
     const r = await api("/api/config", "POST", cfg);
     cfg = r.config;
+    forceActiveNow = !!r.forceActive;
+    applyPendingToView(r.pending);          // 排队中的改动叠回展示态
     dirty = false;
-    toast(r.note || "已保存", "ok");
+    if (r.queued) toast("⏳ 已排队: 将在本次屏蔽时段结束后自动生效", "ok");
+    else toast(r.note || "已保存", "ok");
+    renderSchedule(); renderForce(); renderSites(); renderBrowser(); renderProcesses(); renderWhitelist(); renderSync();
     await refreshStatus();
-    // 自动推送: 保存成功后同步到云端
-    if (acct && acct.loggedIn && acct.autoPush) {
+    // 自动推送: 排队状态下本机配置没变, 推送没有意义(落地后由下次保存/引擎带上)
+    if (!r.queued && acct && acct.loggedIn && acct.autoPush) {
       try { const p = await api("/api/account/push", "POST", {}); acct = p.account; renderSync(); }
       catch (e) { toast("已保存, 但云端同步失败: " + e.message, "err"); }
     }
@@ -2563,7 +2633,14 @@ async function refreshStatus(silent) {
   try {
     status = await api("/api/status");
     autoFail = 0;
+    const qBefore = (pendingInfo && pendingInfo.total) || 0;
+    const qAfter = (status.pending && status.pending.total) || 0;
     renderTop(); renderHome(); renderStatus();
+    // 队列数变了 = 引擎在非屏蔽时段把排队内容落地了(或又有新的排队) -> 重新拉配置对齐
+    if (qBefore !== qAfter) {
+      await load();
+      if (!qAfter) toast("⏳ 排队的改动已在非屏蔽时段自动生效", "ok");
+    }
     return true;
   } catch (e) {
     if (silent) {
@@ -2638,7 +2715,7 @@ $("#syncPushBtn").addEventListener("click", async () => {
 });
 
 $("#syncPullBtn").addEventListener("click", async () => {
-  if (forceLocked()) { lockToast("「从云端拉取配置」"); return; }
+  if (forceLocked()) { toast("🔒 强制模式开启中, 「从云端拉取配置」不可用(拉取会覆盖本机屏蔽名单与时段, 等于绕过强制)。请先关闭强制模式。", "err"); return; }
   if (!confirm("从云端拉取会用云端配置覆盖本机当前配置(本机会自动备份)。确定吗?")) return;
   const btn = $("#syncPullBtn");
   btn.disabled = true;
