@@ -5,11 +5,27 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="color-scheme" content="light">
 <script>
-/* 主题预设: 必须早于样式生效, 否则暗色用户每次打开都会先闪一下白屏 */
+/* 主题预设: 必须早于样式生效, 否则暗色用户每次打开都会先闪一下白屏。
+   模式: auto(默认, 跟随当地时间昼夜) / light / dark。
+   这段和正文里的主题模块是同一套规则(必须重复实现一次, 因为要赶在首帧之前)。 */
 (function () {
-  var t = "light";
-  try { var v = localStorage.getItem("afs-theme"); if (v === "dark" || v === "light") t = v; } catch (e) {}
-  document.documentElement.dataset.theme = t;
+  var DAY_FROM = 7, DAY_TO = 19;          // 白天 = [07:00, 19:00), 其余算夜间
+  function autoTheme() {
+    var h = new Date().getHours();
+    return (h >= DAY_FROM && h < DAY_TO) ? "light" : "dark";
+  }
+  var mode = "auto";
+  try {
+    /* 一次性迁移: 旧版本只存了手动选的 light/dark。现在默认改成"跟随昼夜",
+       若不丢掉旧值, 老用户会一直停在固定模式、以为自动切换没生效。只清一次。 */
+    if (!localStorage.getItem("afs-theme-mig")) {
+      localStorage.removeItem("afs-theme");
+      localStorage.setItem("afs-theme-mig", "1");
+    }
+    var v = localStorage.getItem("afs-theme"); if (v === "auto" || v === "light" || v === "dark") mode = v;
+  } catch (e) {}
+  window.__afsThemeMode = mode;           // 交给正文主题模块, 免得再读一次 localStorage
+  document.documentElement.dataset.theme = (mode === "auto") ? autoTheme() : mode;
 })();
 </script>
 <meta name="theme-color" content="#f4f4f0">
@@ -935,7 +951,7 @@
       <div class="right">
         <span class="pill" id="topPill">加载中…</span>
         <span class="pill queue" id="pendingPill" style="display:none" title="强制模式生效期间只允许收紧(新增屏蔽项 / 打开屏蔽开关 / 减少白名单), 这些改动会排队到非屏蔽时段自动生效">⏳ 待生效</span>
-        <button class="btn small" id="themeBtn" title="切换深浅外观" aria-label="切换深浅外观">🌙 暗色</button>
+        <button class="btn small" id="themeBtn" title="自动: 白天 07:00-19:00 浅色, 其余时段暗色 · 点击切到「浅色」" aria-label="切换外观(自动/浅色/暗色)">🌗 自动</button>
         <button class="btn primary" id="saveBtn">💾 保存更改</button>
       </div>
     </div>
@@ -1482,28 +1498,57 @@ if (topPillEl) {
 }
 
 
-/* ================= 外观切换(浅色 / 暗色, 选择记在本地) ================= */
+/* ================= 外观(自动跟随昼夜 / 浅色 / 暗色) =================
+   三档循环: 自动 -> 浅色 -> 暗色 -> 自动, 选择记在本地(afs-theme)。
+   自动 = 按本机当地时间: 白天 [07:00,19:00) 浅色, 其余时段暗色。 */
 const THEME_KEY = "afs-theme";
+const AFS_DAY_FROM = 7;      // 白天起点(含), 小时
+const AFS_DAY_TO   = 19;     // 白天终点(不含), 小时
+const THEME_MODES = ["auto", "light", "dark"];
+const THEME_LABEL = { auto: "🌗 自动", light: "☀️ 浅色", dark: "🌙 暗色" };
+const AFS_HH = n => String(n).padStart(2, "0");
+const THEME_TIP = {
+  auto:  "自动: 白天 " + AFS_HH(AFS_DAY_FROM) + ":00-" + AFS_HH(AFS_DAY_TO) + ":00 浅色, 其余时段暗色(按当地时间) · 点击切到「浅色」",
+  light: "当前固定浅色 · 点击切到「暗色」",
+  dark:  "当前固定暗色 · 点击切回「自动」"
+};
+let themeMode = "auto";
+function isDayNow() { const h = new Date().getHours(); return h >= AFS_DAY_FROM && h < AFS_DAY_TO; }
+function autoTheme() { return isDayNow() ? "light" : "dark"; }
 function currentTheme() { return document.documentElement.dataset.theme === "dark" ? "dark" : "light"; }
-function applyTheme(t) {
+function applyTheme(t, persist) {
   document.documentElement.dataset.theme = t;
   const meta = document.querySelector('meta[name="color-scheme"]');
   if (meta) meta.setAttribute("content", t === "dark" ? "dark" : "light");
   const b = $("#themeBtn");
   if (b) {
-    b.textContent = t === "dark" ? "☀️ 浅色" : "🌙 暗色";
-    b.title = t === "dark" ? "切换到浅色外观" : "切换到暗色外观";
+    b.textContent = THEME_LABEL[themeMode] || THEME_LABEL.auto;
+    b.title = THEME_TIP[themeMode] || THEME_TIP.auto;
+    b.setAttribute("aria-label", b.title);
   }
-  try { localStorage.setItem(THEME_KEY, t); } catch (e) {}
+  if (persist) { try { localStorage.setItem(THEME_KEY, themeMode); } catch (e) {} }
+}
+/* 每次进入某个模式都重算实际外观: 自动模式跟着当前时间走 */
+function setThemeMode(m, persist) { themeMode = m; applyTheme(m === "auto" ? autoTheme() : m, persist); }
+/* 定时/回到页面时校准。只有自动模式才真干活, 固定模式直接跳过 */
+function syncAutoTheme() {
+  if (themeMode !== "auto") return;
+  const want = autoTheme();
+  if (document.documentElement.dataset.theme !== want) applyTheme(want, false);
 }
 (function initTheme() {
-  applyTheme(currentTheme());          // 与 head 里的预设脚本对齐按钮文案
+  setThemeMode(window.__afsThemeMode || "auto", false);   // 与 head 预设脚本对齐(重算实际外观 + 按钮文案)
   const b = $("#themeBtn");
   if (b) b.addEventListener("click", () => {
-    applyTheme(currentTheme() === "dark" ? "light" : "dark");
-    toast(currentTheme() === "dark" ? "已切换到暗色外观" : "已切换到浅色外观", "ok");
+    const next = THEME_MODES[(THEME_MODES.indexOf(themeMode) + 1) % THEME_MODES.length];
+    setThemeMode(next, true);
+    if (next === "auto") toast("已切回自动外观(跟随昼夜, 当前" + (isDayNow() ? "白天·浅色" : "夜间·暗色") + ")", "ok");
+    else toast("已固定为" + (next === "dark" ? "暗色" : "浅色") + "外观", "ok");
   });
 })();
+setInterval(syncAutoTheme, 30000);                               // 30s 校准(跨过昼夜分界点自动换)
+document.addEventListener("visibilitychange", syncAutoTheme);    // 挂着页面过夜, 回来看一眼即纠正
+window.addEventListener("focus", syncAutoTheme);
 
 /* ================= 渲染 ================= */
 function renderAll() {
