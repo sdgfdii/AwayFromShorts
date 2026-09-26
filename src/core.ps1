@@ -5,7 +5,7 @@
 # ============================================================
 
 $script:AFS_NAME        = 'AwayFromShorts'
-$script:AFS_VERSION     = '1.5.0'
+$script:AFS_VERSION     = '1.5.1'
 $script:AFS_MARK_START  = "# >>> $($script:AFS_NAME) >>> (managed by AwayFromShorts - do not edit)"
 $script:AFS_MARK_END    = "# <<< $($script:AFS_NAME) <<<"
 # 这些进程永远不杀,防止把系统/本工具自己弄死
@@ -258,6 +258,23 @@ function Get-AfsConfigLockDiff {
         [void]$hardKeys.Add('schedule.windows')
         if (-not $res.hardMsg) {
             $res.hardMsg = '强制模式开启中, 无法更改「屏蔽时段」(防破戒)。屏蔽星期 / 屏蔽时段不参与排队, 请先在「强制模式」卡片关闭强制模式, 再修改屏蔽时间段。'
+        }
+    }
+
+    # 1b) 强制模式本体(开关 / 强制星期): 同属"何时算强制时段"的定义 -> 硬拒
+    #     走 /api/config 把 force.enabled 改掉, 或把今天从 force.weekdays 里去掉, 强制模式会立刻
+    #     变成"未生效" —— 既绕开强制, 也顺带绕开基于"此刻是否生效"判定的卸载守卫。
+    #     强制模式的任何字段一律只走「强制模式」卡片(/api/force), 那里的关闭动作会同步清理状态文件。
+    #     注意: 传入配置缺少 force 块 = 会被 Set-AfsConfigSafe 合并回默认值(enabled=false),
+    #          所以"字段缺失"必须按"改成了关闭"处理, 不能当成"没动"。
+    $curOn  = [bool]$Current.force.enabled
+    $newOn  = [bool]$Incoming.force.enabled
+    $curFwd = @($Current.force.weekdays)
+    $newFwd = @($Incoming.force.weekdays)
+    if ($curOn -ne $newOn -or (Get-AfsListSignature $curFwd) -ne (Get-AfsListSignature $newFwd)) {
+        [void]$hardKeys.Add('force')
+        if (-not $res.hardMsg) {
+            $res.hardMsg = '强制模式的「开关 / 强制星期」不能通过「保存更改」修改(防破戒: 它们定义了何时算强制时段, 改掉就等于绕开强制)。请用「强制模式」卡片上的开启 / 关闭按钮操作 —— 关闭时会同时清理独立状态文件。'
         }
     }
 
@@ -706,6 +723,10 @@ function Test-AfsForceActive {
 #   2) force-state.json 存在 (= 曾合法开启且未经面板合法关闭)
 # 于是"手改 config.json 把 force.enabled 改成 false 再卸载"这条绕过路径也被挡住。
 # 返回 @{ blocked; reason = off|force-active|force-on|force-residue; active; until; msg }
+# 卸载守卫: 只在"强制模式此刻正在生效"(所选星期的屏蔽时段内)时拦截。
+# 判据是 Test-AfsForceActive 的实时结果 —— 单纯"开关开着"但当前不在强制时段(窗口外 /
+# 非所选星期)一律放行, 否则周六想卸载也会被拦住。
+# 仍保留一处防篡改: config 显示未开启却残留独立状态文件 = 有人手改配置绕过强制模式 -> 拦。
 function Get-AfsUninstallBlock {
     param([datetime]$Now = (Get-Date))
     $res = @{ blocked = $false; reason = 'off'; active = $false; until = $null; msg = '' }
@@ -715,21 +736,24 @@ function Get-AfsUninstallBlock {
     $stateOn = Test-Path (Get-AfsForceStatePath)
     if (-not $cfgOn -and -not $stateOn) { return $res }
 
+    # 1) 真正生效中(所选星期的屏蔽时段内) -> 拦
     $fa = Test-AfsForceActive -Config $cfg -Now $Now
-    $res.blocked = $true
-    $res.active  = [bool]$fa.active
-    if ($fa.until) { $res.until = ([datetime]$fa.until).ToString('HH:mm') }
-
     if ($fa.active) {
+        $res.blocked = $true
+        $res.active  = $true
+        if ($fa.until) { $res.until = ([datetime]$fa.until).ToString('HH:mm') }
         $res.reason = 'force-active'
-        $res.msg = "强制模式正在生效中(当前位于屏蔽时段), 已阻止卸载, 程序文件 / 计划任务 / hosts 全部保持原样。请等本次屏蔽时段结束后, 在面板「状态 / 屏蔽计划」页关闭强制模式, 再执行卸载。"
-    } elseif ($cfgOn) {
-        $res.reason = 'force-on'
-        $res.msg = "强制模式已开启(所选星期的屏蔽时段内长期强制), 已阻止卸载, 程序文件 / 计划任务 / hosts 全部保持原样。请先在面板「状态 / 屏蔽计划」页关闭强制模式(非屏蔽时段可关), 再执行卸载。"
-    } else {
-        $res.reason = 'force-residue'
-        $res.msg = "检测到强制模式状态文件(force-state.json)尚未清除, 为防绕过已阻止卸载。请到面板「状态 / 屏蔽计划」页关闭一次强制模式以清理状态, 再执行卸载。"
+        $res.msg = "强制模式正在生效中(当前处于屏蔽时段), 已阻止卸载, 程序文件 / 计划任务 / hosts 全部保持原样。请等本次屏蔽时段结束后再执行卸载(若届时仍被拦, 到面板「状态 / 屏蔽计划」页关闭强制模式)。"
+        return $res
     }
+
+    # 2) 开关开着但此刻不在强制时段(窗口外 / 非所选星期) -> 放行
+    if ($cfgOn) { return $res }
+
+    # 3) config 未开启却残留状态文件 -> 手改配置绕过的痕迹, 仍拦
+    $res.blocked = $true
+    $res.reason = 'force-residue'
+    $res.msg = "检测到强制模式状态文件(force-state.json)残留, 但配置显示强制模式未开启 —— 疑似被手动改过配置文件。为防绕过已阻止卸载。请到面板「状态 / 屏蔽计划」页开启并关闭一次强制模式以清理状态, 再执行卸载。"
     $res
 }
 

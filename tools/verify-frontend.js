@@ -230,6 +230,12 @@ try {
     ["后端: status 接口带 pending", /pending\s+= \(Read-AfsPendingQueue\)/, ui],
     ["后端: 主引擎落地排队", /Invoke-AfsPendingApply -Config \$cfg/, engine],
     ["后端: 强制中禁止云端拉取覆盖", /强制模式开启中, 无法从云端拉取配置/, core],
+    // 卸载守卫 (v1.5.1): 只在"强制模式此刻真正生效中"才拦 —— 开关开着但窗口外 / 非所选星期一律放行
+    ["卸载守卫: 判据=此刻强制生效中", /\$fa = Test-AfsForceActive -Config \$cfg -Now \$Now/, core],
+    ["卸载守卫: 窗口外放行", /if \(\$cfgOn\) \{ return \$res \}/, core],
+    ["卸载守卫: 保留状态文件残留防篡改", /reason = 'force-residue'/, core],
+    ["后端: force 开关/星期不可经保存更改", /\[void\]\$hardKeys\.Add\('force'\)/, core],
+    ["后端: force 星期对比用签名归一", /Get-AfsListSignature \$curFwd\) -ne \(Get-AfsListSignature \$newFwd/, core],
   ];
   backend.forEach(([name, re, src]) => rep(name, re.test(src)));
 } catch (e) { rep("读取后端脚本", false, "- " + e.message); }

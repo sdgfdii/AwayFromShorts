@@ -362,16 +362,32 @@ CheckBool '生效时段内 -> 禁止卸载' $true $g1.blocked
 CheckBool '生效时段内 -> 原因 force-active' $true ($g1.reason -eq 'force-active')
 CheckBool '生效时段内 -> 给出可操作文案' $true ($g1.msg -like '*关闭强制模式*')
 
-# F2. 强制开启但当前不在生效时段(窗口外) -> 仍然拦(开着强制模式就是"期间")
+# F2. 强制开着但当前不在生效时段(窗口外) -> 放行(只在"真正生效中"才拦)
 $uc2 = Get-AfsConfig
 $uc2.schedule.windows = @(@{ start = '00:00'; end = '00:01' })   # 已过去的 1 分钟 -> 非生效时段
 Set-AfsConfigSafe -InputConfig $uc2 | Out-Null
 $g2 = Get-AfsUninstallBlock
-CheckBool '非生效时段但强制开着 -> 仍然禁止卸载' $true $g2.blocked
-CheckBool '非生效时段 -> 原因 force-on' $true ($g2.reason -eq 'force-on')
-CheckBool '非生效时段 -> 提示先关强制模式' $true ($g2.msg -like '*关闭强制模式*')
+CheckBool '窗口外(强制未生效) -> 允许卸载' $false $g2.blocked
+CheckBool '窗口外(强制未生效) -> 原因 off' $true ($g2.reason -eq 'off')
+
+# F2b. 开关开着但"今天不在强制星期里"(周末场景) -> 放行
+$uc2b = Get-AfsConfig
+$uc2b.force.enabled    = $true
+$uc2b.force.weekdays   = @(1, 2, 3, 4, 5)                        # 只强制周一到周五
+$uc2b.schedule.days    = @(1, 2, 3, 4, 5, 6, 7)
+$uc2b.schedule.windows = @(@{ start = '00:00'; end = '23:59' })
+Set-AfsConfigSafe -InputConfig $uc2b | Out-Null
+$satNow = [datetime]'2026-09-26 18:00'    # 周六 (非强制星期)
+$monNow = [datetime]'2026-09-28 18:00'    # 周一 (强制星期 + 全天窗口)
+$g2b = Get-AfsUninstallBlock -Now $satNow
+CheckBool '非强制星期(周六) -> 允许卸载' $false $g2b.blocked
+CheckBool '非强制星期(周六) -> 原因 off' $true ($g2b.reason -eq 'off')
+$g2c = Get-AfsUninstallBlock -Now $monNow
+CheckBool '强制星期(周一)且窗口内 -> 禁止卸载' $true $g2c.blocked
+CheckBool '强制星期(周一) -> 原因 force-active' $true ($g2c.reason -eq 'force-active')
 
 # F3. 手改 config.json 把 force.enabled 改成 false (模拟绕过) -> 状态文件仍在, 仍然拦
+#     注: 这不是"窗口外正常情形", 而是配置被手改的痕迹, 属于防篡改, 依然拦。
 $uc3 = Get-AfsConfig
 $uc3.force.enabled = $false
 Write-AfsJson -Path (Get-AfsConfigPath) -Object $uc3
@@ -419,6 +435,36 @@ CheckBool '卸载脚本: 守卫在提权之前' $true ($iGuard -ge 0 -and $iGuar
 CheckBool '卸载脚本: 守卫在删除计划任务之前' $true ($iGuard -ge 0 -and $iGuard -lt $iDelTask)
 CheckBool '卸载脚本: 守卫在删除程序目录之前' $true ($iGuard -ge 0 -and $iGuard -lt $iDelDir)
 CheckBool '卸载脚本: 命中即 exit 1' $true ($unText -like "*exit 1*")
+
+# G. 强制模式本体(开关 / 强制星期)不能通过"保存更改"改 —— 否则改完强制立刻"未生效",
+#    既绕开强制, 也顺带绕开基于"此刻是否生效"判定的卸载守卫。只能走 /api/force。
+# ---------------------------------------------------------------
+Write-Host ''
+Write-Host '--- G. force block locked against /api/config ---'
+
+$gc = New-BaseCfg; $gc.force = @{ enabled = $true; until = $null; weekdays = @(1, 2, 3, 4, 5) }
+$gn = New-BaseCfg; $gn.force = @{ enabled = $true; until = $null; weekdays = @(1, 2, 3, 4, 5) }
+CheckDiff 'force block untouched'            @('none') $gc $gn
+
+$gn2 = New-BaseCfg; $gn2.force = @{ enabled = $false; until = $null; weekdays = @(1, 2, 3, 4, 5) }
+CheckDiff 'turn force off via config'        @('hard') $gc $gn2
+
+$gn3 = New-BaseCfg; $gn3.force = @{ enabled = $true; until = $null; weekdays = @(1, 2, 3, 4) }   # 去掉周五
+CheckDiff 'shrink force weekdays via config' @('hard') $gc $gn3
+
+$gn4 = New-BaseCfg                                  # force 块整体消失 -> 会被合并回默认(enabled=false)
+CheckDiff 'force block dropped'              @('hard') $gc $gn4
+
+$gn5 = New-BaseCfg; $gn5.force = @{ enabled = $true; until = $null; weekdays = @(5, 4, 3, 2, 1) } # 仅顺序不同
+CheckDiff 'force weekdays reordered only'    @('none') $gc $gn5
+
+$gn6 = New-BaseCfg; $gn6.force = @{ enabled = $true; until = $null; weekdays = @(1, 2, 3, 4, 5, 5) } # 重复项
+CheckDiff 'force weekdays duplicated only'   @('none') $gc $gn6
+
+# 反向: 未开启时也不允许通过保存把强制打开(必须走卡片, 否则状态文件不会同步写)
+$gc2 = New-BaseCfg; $gc2.force = @{ enabled = $false; until = $null; weekdays = @() }
+$gn7 = New-BaseCfg; $gn7.force = @{ enabled = $true; until = $null; weekdays = @(1, 2, 3, 4, 5) }
+CheckDiff 'turn force on via config'         @('hard') $gc2 $gn7
 
 Remove-Item -LiteralPath $udir  -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $udir2 -Recurse -Force -ErrorAction SilentlyContinue
