@@ -154,6 +154,66 @@ function Normalize-AfsList {
     return @($Value)
 }
 
+# ---------- 站点项解析 (支持"域名"与"域名/路径"两种写法) ----------
+# 站点项允许两种形态:
+#   www.bilibili.com            -> 纯域名, 走 hosts + URLBlocklist 全站拦截
+#   www.bilibili.com/video/*    -> 带路径, 只能走 URLBlocklist (hosts 无法表达路径), 用于"整站屏蔽但放行某类页面"
+# 解析结果: @{ host; path; isPath; valid }  —— path 为空串表示纯域名
+function Parse-AfsSiteEntry {
+    param([string]$Entry)
+    $res = @{ host = ''; path = ''; isPath = $false; valid = $false }
+    if ($null -eq $Entry) { return $res }
+    $s = ([string]$Entry).Trim().ToLower()
+    if (-not $s) { return $res }
+    # 去掉误粘进来的协议头
+    $s = $s -replace '^[a-z]+://', ''
+    # 去掉 fragment 与其后内容, 去掉 query string
+    #   用户常直接复制浏览器地址栏整条 URL(如 .../video/BV1xx/?vd_source=xxx),
+    #   query 对路径匹配无意义且长度不定, 一律剥离。
+    $s = $s -replace '#.*$', ''
+    $s = $s -replace '\?.*$', ''
+    if (-not $s) { return $res }
+
+    # 拆 host / path —— 注意: 保留 path 尾部的 '*'(通配符是有效的模式语法, 不能砍)
+    $slash = $s.IndexOf('/')
+    if ($slash -lt 0) {
+        $hostPart = $s; $pathPart = ''
+    } else {
+        $hostPart = $s.Substring(0, $slash); $pathPart = $s.Substring($slash)
+    }
+
+    # 主机名: 允许 * 通配符(仅用于 . 分隔的子域段), 允许字母数字点横线
+    if (-not $hostPart) { return $res }
+    if ($hostPart -notmatch '^(\*\.)?[a-z0-9]([a-z0-9\-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9\-]*[a-z0-9])?)*$') { return $res }
+    if ($hostPart -notmatch '\.') { return $res }   # 必须有至少一个点(排除单段词)
+
+    # 路径: 允许字母数字和常见 URL 字符, 允许 * 通配
+    if ($pathPart) {
+        if ($pathPart -notmatch '^/[a-z0-9\-_./~%*+]*$') { return $res }
+        # 只保留结尾的 '*' 通配; 连续斜杠归一
+        $pathPart = $pathPart -replace '/+$', '/'
+        # "/" 或 "/*" 等价于"任意路径", 视作纯域名(整站)处理更符合直觉
+        if ($pathPart -eq '/' -or $pathPart -eq '/*') { $pathPart = '' }
+        if ($pathPart) {
+            # 结尾裸露的 '/' 表示前缀匹配, 补一个 '*' 让意图显式
+            if ($pathPart.EndsWith('/')) { $pathPart += '*' }
+            $res.path = $pathPart
+            $res.isPath = $true
+        }
+    }
+    $res.host = $hostPart
+    $res.valid = $true
+    $res
+}
+
+# 站点项 -> 纯域名 (路径模式取其主机部分), 供 hosts 使用
+function Get-AfsSiteHost {
+    param([string]$Entry)
+    $p = Parse-AfsSiteEntry -Entry $Entry
+    if ($p.valid) { return $p.host }
+    ''
+}
+
 # 列表签名: 小写 / 去首尾空白 / 去重 / 排序后拼接, 用于判断"名单内容是否被改动"
 # (域名与进程名都大小写不敏感; 只改大小写、重复填写或调换填写顺序不算改动)
 function Get-AfsListSignature {
@@ -617,13 +677,16 @@ $null = $cfg.Remove('clash')   # Clash 接管功能已移除 (v1.2.7): 清理旧
     })
 
     $cfg.blockWebsites = [bool]$cfg.blockWebsites
-    $cfg.blockedSites = @(Normalize-AfsList $cfg.blockedSites | ForEach-Object { ([string]$_).Trim().ToLower() } |
-        Where-Object { $_ -match '^[a-z0-9.\-]+$' } | Sort-Object -Unique)
+    # 站点项支持"域名"与"域名/路径"两种写法(后者仅走 URLBlocklist, 用于整站屏蔽+路径放行)
+    $cfg.blockedSites = @(Normalize-AfsList $cfg.blockedSites |
+        ForEach-Object { ([string]$_).Trim().ToLower() } |
+        Where-Object { (Parse-AfsSiteEntry -Entry $_).valid } | Sort-Object -Unique)
     $cfg.blockedProcesses = @(Normalize-AfsList $cfg.blockedProcesses | ForEach-Object { ([string]$_).Trim() } |
         Where-Object { $_ } | Sort-Object -Unique)
 
-    $cfg.whitelist.sites = @(Normalize-AfsList $cfg.whitelist.sites | ForEach-Object { ([string]$_).Trim().ToLower() } |
-        Where-Object { $_ -match '^[a-z0-9.\-]+$' } | Sort-Object -Unique)
+    $cfg.whitelist.sites = @(Normalize-AfsList $cfg.whitelist.sites |
+        ForEach-Object { ([string]$_).Trim().ToLower() } |
+        Where-Object { (Parse-AfsSiteEntry -Entry $_).valid } | Sort-Object -Unique)
     $cfg.whitelist.processes = @(Normalize-AfsList $cfg.whitelist.processes | ForEach-Object { ([string]$_).Trim() } |
         Where-Object { $_ } | Sort-Object -Unique)
 
@@ -1158,20 +1221,50 @@ function Read-AfsBrowserState {
 }
 
 function Save-AfsBrowserState {
-    param([bool]$Applied)
+    param([bool]$Applied, [string]$Signature = '')
+    $obj = @{ applied = $Applied }
+    if ($Signature) { $obj.signature = $Signature }
     $utf8 = New-Object System.Text.UTF8Encoding($false)
-    [System.IO.File]::WriteAllText((Get-AfsBrowserStatePath), (ConvertTo-Json @{ applied = $Applied }), $utf8)
+    [System.IO.File]::WriteAllText((Get-AfsBrowserStatePath), (ConvertTo-Json $obj), $utf8)
 }
 
-# 域名列表 -> URLBlocklist 通配符模式 (覆盖 http/https/ws 及子域)
+# 浏览器策略内容指纹: URLBlocklist + URLAllowlist 的最终模式集拼接后取哈希。
+# 用于判断"策略内容是否变化" —— 旧版只看 applied 布尔量, 配置改了却不会刷新策略。
+function Get-AfsBrowserPolicySignature {
+    param($Config)
+    $sites   = @($Config.blockedSites | ForEach-Object { $_.Trim().ToLower() } | Where-Object { $_ })
+    $wlSites = @($Config.whitelist.sites | ForEach-Object { $_.Trim().ToLower() } | Where-Object { $_ })
+    $wlPlainHosts = @($wlSites | ForEach-Object {
+        $p = Parse-AfsSiteEntry -Entry $_
+        if ($p.valid -and -not $p.isPath) { $p.host }
+    } | Where-Object { $_ } | Select-Object -Unique)
+    $toBlock = @($sites | Where-Object {
+        $bp = Parse-AfsSiteEntry -Entry $_
+        -not ($bp.valid -and -not $bp.isPath -and $wlPlainHosts -contains $bp.host)
+    })
+    $all = @(ConvertTo-AfsUrlPatterns -Domains $toBlock) + @(ConvertTo-AfsUrlPatterns -Domains $wlSites)
+    $joined = (@($all | Sort-Object -Unique) -join "`n")
+    $md5 = [System.Security.Cryptography.MD5]::Create()
+    $hash = $md5.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($joined))
+    (($hash | ForEach-Object { $_.ToString('x2') }) -join '')
+}
+
+# 域名/路径列表 -> URLBlocklist 通配符模式
+# 纯域名 "a.com"        -> *://a.com/*  +  *://*.a.com/*   (覆盖子域)
+# 路径项 "a.com/video/*" -> *://a.com/video/*  (不做子域通配: 路径规则应精确到该主机)
 function ConvertTo-AfsUrlPatterns {
     param($Domains)
     $out = New-Object System.Collections.Generic.List[string]
     foreach ($d in @($Domains)) {
-        $d = ([string]$d).Trim().ToLower()
-        if (-not $d -or $d -notmatch '^[a-z0-9.\-]+$') { continue }
-        $out.Add("*://$d/*")
-        $out.Add("*://*.$d/*")
+        $p = Parse-AfsSiteEntry -Entry ([string]$d)
+        if (-not $p.valid) { continue }
+        if ($p.isPath) {
+            # 路径模式: 只针对该主机 (含 * 主机则原样)
+            $out.Add("*://$($p.host)$($p.path)")
+        } else {
+            $out.Add("*://$($p.host)/*")
+            $out.Add("*://*.$($p.host)/*")
+        }
     }
     @($out | Select-Object -Unique)
 }
@@ -1183,11 +1276,25 @@ function Get-AfsBrowserPolicyPaths {
 }
 
 # 写入 URL 拦截策略, 返回拦截域名数
+# 白名单语义(关键):
+#   纯域名白名单 "a.com"      -> 把 blockedSites 里同域名的项整体剔除(全站放行)
+#   路径白名单 "a.com/video/*" -> 不剔除任何屏蔽项, 只作为 URLAllowlist 精细放行该路径
+#   (放行依赖 Edge 的"最长路径优先"与"平局 allowlist 胜"规则, 见官方 filter 格式文档)
 function Set-AfsBrowserPolicy {
     param($Config)
     $sites   = @($Config.blockedSites | ForEach-Object { $_.Trim().ToLower() } | Where-Object { $_ })
     $wlSites = @($Config.whitelist.sites | ForEach-Object { $_.Trim().ToLower() } | Where-Object { $_ })
-    $toBlock = @($sites | Where-Object { $wlSites -notcontains $_ })
+
+    # 只有"纯域名"形态的白名单才剔除屏蔽项
+    $wlPlainHosts = @($wlSites | ForEach-Object {
+        $p = Parse-AfsSiteEntry -Entry $_
+        if ($p.valid -and -not $p.isPath) { $p.host }
+    } | Where-Object { $_ } | Select-Object -Unique)
+    $toBlock = @($sites | Where-Object {
+        $bp = Parse-AfsSiteEntry -Entry $_
+        -not ($bp.valid -and -not $bp.isPath -and $wlPlainHosts -contains $bp.host)
+    })
+
     $blockPatterns = ConvertTo-AfsUrlPatterns -Domains $toBlock
     $allowPatterns = ConvertTo-AfsUrlPatterns -Domains $wlSites
     foreach ($root in Get-AfsBrowserPolicyPaths -Targets $Config.browser.targets) {
@@ -1349,9 +1456,28 @@ function Invoke-AfsEnforce {
     try {
         if ($active) {
             if ($Config.blockWebsites) {
-                $sites   = @($Config.blockedSites | ForEach-Object { $_.Trim().ToLower() } | Where-Object { $_ })
-                $wlSites = @($Config.whitelist.sites | ForEach-Object { $_.Trim().ToLower() } | Where-Object { $_ })
-                $toBlock = @($sites | Where-Object { $wlSites -notcontains $_ })
+                # hosts 只能表达"域名级"拦截。为支持"整站屏蔽 + 路径放行", 这里做区分:
+                #   纯域名屏蔽项(a.com)            -> 进 hosts 整站封
+                #   路径屏蔽项(a.com/video/*)      -> 主机让出 hosts, 改由 URLBlocklist 路径规则处理
+                #   纯域名白名单(a.com)            -> 该主机整体放行, 不进 hosts
+                #   ⚠️ 只要某主机存在"路径级"规则(屏蔽或白名单), 该主机就不进 hosts —— 否则
+                #      DNS 被指向 0.0.0.0, 浏览器根本连不上, URLBlocklist 的路径例外永远没机会生效。
+                $wlPlain = @($Config.whitelist.sites | ForEach-Object {
+                    $p = Parse-AfsSiteEntry -Entry ([string]$_)
+                    if ($p.valid -and -not $p.isPath) { $p.host }
+                } | Where-Object { $_ } | Select-Object -Unique)
+                $wlPathHosts = @($Config.whitelist.sites | ForEach-Object {
+                    $p = Parse-AfsSiteEntry -Entry ([string]$_)
+                    if ($p.valid -and $p.isPath) { $p.host }
+                } | Where-Object { $_ } | Select-Object -Unique)
+                $toBlock = @($Config.blockedSites | ForEach-Object {
+                    $p = Parse-AfsSiteEntry -Entry ([string]$_)
+                    if (-not $p.valid -or -not $p.host) { return }
+                    if ($p.isPath) { return }                             # 路径项: 交给 URLBlocklist
+                    if ($wlPlain -contains $p.host) { return }            # 纯域名白名单: 整站放行
+                    if ($wlPathHosts -contains $p.host) { return }        # 该主机有路径级白名单: 让出 hosts
+                    $p.host
+                } | Where-Object { $_ } | Select-Object -Unique)
                 if ($Simulate) {
                     $log.hosts = "simulate-block($($toBlock.Count) domains)"
                 } else {
@@ -1385,17 +1511,23 @@ function Invoke-AfsEnforce {
             } elseif (-not $Simulate) {
                 Remove-AfsBrowserClose
             }
-            # 附加 URL 拦截 (URLBlocklist): 状态机, 仅在 开启/关闭 转变时写策略 + 重启浏览器
+            # 附加 URL 拦截 (URLBlocklist): 状态机 + 内容指纹
+            #   仅在 开启/关闭 转变 或 策略内容变化 时写策略 + 重启浏览器。
+            #   (旧版只看 applied 布尔量, 导致"改了域名/白名单但策略不刷新" —— 浏览器一直用旧规则)
             $bState = Read-AfsBrowserState
-            if ($Config.browser.urlBlock -and -not $bState.applied) {
+            if ($Config.browser.urlBlock) {
                 if ($Simulate) { $log.browser = 'simulate-urlblock' }
                 else {
-                    $n = Set-AfsBrowserPolicy -Config $Config
-                    Save-AfsBrowserState -Applied $true
-                    $log.browser = "url-block($n domains)"
-                    Invoke-AfsBrowserWindowClose -Config $Config -RestartAll   # 重启浏览器使策略生效
+                    $curSig = Get-AfsBrowserPolicySignature -Config $Config
+                    $needWrite = (-not $bState.applied) -or ([string]$bState.signature -ne $curSig)
+                    if ($needWrite) {
+                        $n = Set-AfsBrowserPolicy -Config $Config
+                        Save-AfsBrowserState -Applied $true -Signature $curSig
+                        $log.browser = "url-block($n domains)"
+                        Invoke-AfsBrowserWindowClose -Config $Config -RestartAll
+                    }
                 }
-            } elseif (-not $Config.browser.urlBlock -and $bState.applied) {
+            } elseif ($bState.applied) {
                 if ($Simulate) { $log.browser = 'simulate-urlclean' }
                 else {
                     Remove-AfsBrowserPolicy -Config $Config
