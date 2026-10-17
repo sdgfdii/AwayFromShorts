@@ -39,6 +39,12 @@ bash install.sh
 
 时间窗口改 `guard.sh` 顶部的 `ALLOW_START` / `ALLOW_END`（HHMM，支持跨午夜）。
 
+**报 `$'\r': command not found`** = 文件被 Windows 转成了 CRLF。修：
+
+```bash
+sed -i 's/\r$//' ~/afs-phone/*.sh ~/storage/downloads/phone/*.sh
+```
+
 ## 三个洞，必须知道
 
 1. **重启后 Shizuku 掉线 → 阻断失效。** 得重新用无线调试启动一次（约 1 分钟）。没有 root 就没有真正的开机自启。
