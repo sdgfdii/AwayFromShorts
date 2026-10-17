@@ -1,0 +1,176 @@
+# AFS 守卫（Device Owner 版）
+
+手机上唯一真正锁得住的方案：把 App 变成 **Device Owner（设备所有者）**，然后用
+`setPackagesSuspended()` 到点冻结抖音。
+
+跟系统「屏幕限时」的区别：
+
+| | 系统屏幕限时 | 这个 DPC |
+|---|---|---|
+| 到点后「延长 15 分钟」 | 有，输密码就行 | **没有这个按钮** |
+| 强停 / 卸载 | 能 | 设置里点不动 |
+| 恢复出厂洗掉 | 能 | 被 `DISALLOW_FACTORY_RESET` 拦住 |
+| 安全模式绕过 | 能 | 被 `DISALLOW_SAFE_BOOT` 拦住 |
+| 改系统时间绕过 | 能 | 被 `DISALLOW_CONFIG_DATE_TIME` 拦住 |
+
+代价说清楚：**装上去以后只能靠 adb 拆**，路径见文末「逃生口」。
+
+---
+
+## 0. 先确认一件事
+
+`dpm set-device-owner` 要求设备上**没有任何账号**（Google 账号、OPPO 账号、微信里的企业账号都算），
+也不能有工作资料。所以现实里通常是：**恢复出厂 → 跳过账号登录 → 立刻装这个 → 再登账号**。
+
+如果不想恢复出厂，就先试一次，报错 `there are already some accounts on the device` 再决定。
+
+---
+
+## 1. 打包（在电脑上）
+
+```bash
+cd phone/dpc
+bash build.sh
+```
+
+产物：`phone/afs-guard.apk`（21 KB，已签名）。
+
+签名库在 `phone/dpc/keystore/afs.keystore`（密码 `afsguard`）。
+**换 key 就没法覆盖升级**，别弄丢。
+
+> 已经打包好的那份在 `phone/afs-guard.apk`，直接拿去用即可，跳过这一步。
+
+## 2. 手机准备
+
+1. 设置 → 关于手机 → 版本号，连点 7 次 → 打开开发者选项
+2. 设置 → 系统设置 → 开发者选项 → 打开 **USB 调试**
+3. ColorOS 还要额外打开 **「禁止权限监控」** 和 **「USB 安装」**（不同版本名字略有差异）
+4. 数据线连电脑，手机上点「允许 USB 调试」
+
+## 3. 装 APK 并设为设备所有者
+
+```bash
+ADB="C:/Users/nj/.afs-android/sdk/platform-tools/adb.exe"
+
+# 确认连上了（手机上会出现授权弹窗，勾"始终允许"）
+"$ADB" devices
+
+# 安装
+"$ADB" install -r phone/afs-guard.apk
+
+# 设为设备所有者（这一步是全部关键）
+"$ADB" shell dpm set-device-owner com.afs.guard/.AfsAdmin
+```
+
+成功会输出：
+
+```
+Success: Device owner set to package ComponentInfo{com.afs.guard/com.afs.guard.AfsAdmin}
+```
+
+核对一下：
+
+```bash
+"$ADB" shell dpm list-owners
+```
+
+然后手机桌面上打开 **AFS 守卫**，页面第一行应该显示 `设备所有者　是（已锁死）`。
+
+---
+
+## 4. 它会怎么工作
+
+```
+        ┌──────────── 允许时段 20:00 - 23:00 ────────────┐
+00:00 ────────────────────────────────┬──────────────┬── 24:00
+      冻结（图标变灰，点开提示"已暂停"）   ↑              ↑
+                                   20:00          23:00
+                                  解冻            再冻结
+```
+
+- **只在两个边界时刻各响一次**（20:00 / 23:00），不是每分钟轮询 → 不费电
+- 外加 `JobScheduler` 每 15 分钟兜底一次，防止闹钟被系统掐掉
+- 开机 / 重装后自动重新落一遍
+- 冻结态是**持久的**：即使进程被杀，抖音也打不开
+
+改时段：编辑 `java/com/afs/guard/Guard.java` 顶部四个常量，然后
+
+```bash
+cd phone/dpc && bash build.sh
+"$ADB" install -r ../afs-guard.apk
+```
+
+```java
+public static final int ALLOW_START_H = 20;
+public static final int ALLOW_START_M = 0;
+public static final int ALLOW_END_H   = 23;
+public static final int ALLOW_END_M   = 0;
+```
+
+跨午夜也支持，比如 `START_H=23, END_H=20` 就是每晚 23:00 到第二天 20:00 放行。
+
+---
+
+## 5. 加固开关（`Guard.java` 顶部）
+
+| 常量 | 默认 | 作用 |
+|---|---|---|
+| `BLOCK_FACTORY_RESET` | `true` | 禁止恢复出厂。**真正的锁死**，关了就等于留了个一键清空的后门 |
+| `BLOCK_SAFE_BOOT` | `true` | 禁止安全模式（否则安全模式里所有第三方 App 都不加载） |
+| `BLOCK_APPS_CONTROL` | `true` | 设置里「强行停止 / 卸载 / 清除数据」全部变灰 |
+| `BLOCK_TIME_CHANGE` | `true` | 禁止手动改时间（否则把钟拨到 20:00 就绕过去了） |
+| `BLOCK_UNINSTALL_ALL` | `false` | 禁止卸载**任何**应用，比较狠，默认关 |
+| `ALSO_SUSPEND_BROWSERS` | `false` | 屏蔽时段连浏览器一起冻结，堵抖音网页版 |
+
+---
+
+## 6. 管哪几个包
+
+```
+com.ss.android.ugc.aweme        抖音
+com.ss.android.ugc.aweme.lite   抖音极速版
+com.ss.android.ugc.live         抖音火山版
+```
+
+**三个都管**。只写一个等于没管 —— 极速版和火山版是独立安装包。
+
+---
+
+## 7. 还剩什么洞
+
+诚实列一下，这些是改代码也堵不掉的：
+
+1. **知道怎么改代码的人能自己改回去** —— 改常量、重新编译、`adb install -r`。
+   这是设计上的逃生门，但它同时也是一条绕路。**别把 adb 和这份源码放在自己随手可及的地方。**
+2. **手机连着电脑就能拆** —— `adb shell dpm remove-active-admin` 两条命令搞定。同理，数据线收起来。
+3. **`adb install -r` 覆盖安装不校验签名一致性以外的策略**，所以升级窗口期请别改时段。
+4. **Web 版抖音**：默认不管，需要就开 `ALSO_SUSPEND_BROWSERS`。
+5. **时区**：`DISALLOW_CONFIG_DATE_TIME` 拦的是手动改，出差自动换时区拦不住。
+
+---
+
+## 8. 逃生口（拆掉守卫）
+
+```bash
+ADB="C:/Users/nj/.afs-android/sdk/platform-tools/adb.exe"
+"$ADB" shell dpm remove-active-admin com.afs.guard/.AfsAdmin
+"$ADB" uninstall com.afs.guard
+```
+
+`remove-active-admin` 会连带清掉所有 user restriction，所以
+`DISALLOW_FACTORY_RESET` 也就一起没了。**在它生效期间你是没法在手机上做这些的。**
+
+---
+
+## 9. 离线回归
+
+不需要手机，也不需要 Android 运行时：
+
+```bash
+cd phone/dpc
+bash test/run.sh
+```
+
+用「逐分钟暴力扫描」当标准答案，去对 `nextFlipMillis()` 的跳跃算法，
+覆盖默认窗口（20:00→23:00）和跨午夜窗口（23:00→20:00）两种配置，共 8640 个时间点。
+当前结果：**18/18 PASS**。

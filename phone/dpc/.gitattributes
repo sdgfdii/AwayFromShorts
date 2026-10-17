@@ -1,0 +1,2 @@
+# 手机端脚本一律 LF，Windows 上 checkout 也别加 CR
+*.sh text eol=lf
