@@ -37,6 +37,16 @@ public class MainActivity extends Activity {
     private static final int RED = 0xFFF85A54;
     private static final int GREEN = 0xFF20A162;
 
+    // 屏蔽时段整体切深色：是"变黑"，不是把控件调成半透明灰
+    private static final int BG_DARK      = 0xFF0D0D0F;
+    private static final int SURFACE_DARK  = 0xFF1A1A1D;
+    private static final int TEXT_DARK     = 0xFFEDEDEF;
+    private static final int TEXT2_DARK    = 0xFF9B9BA2;
+    private static final int OFF_DARK      = 0xFF2A2A2E;
+    private static final int OFF_LIGHT     = 0xFFE3E5E7;
+    private static final int RED_DARK      = 0xFFFF7B72;
+    private static final int GREEN_DARK    = 0xFF3DDC84;
+
     private TextView status;
     private TextView result;
     private TextView lockNote;
@@ -45,6 +55,15 @@ public class MainActivity extends Activity {
     private Button endBtn;
     private Button forceBtn;
     private final Button[] dayBtns = new Button[7];
+
+    private ScrollView scroll;
+    private LinearLayout dayRow;
+    private TextView title;
+    private TextView sub;
+    private TextView foot;
+    private Button applyBtn;
+    private final java.util.List<TextView> cards = new java.util.ArrayList<TextView>();
+    private final java.util.List<TextView> labels = new java.util.ArrayList<TextView>();
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Runnable tick = new Runnable() {
@@ -59,7 +78,7 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        ScrollView scroll = new ScrollView(this);
+        scroll = new ScrollView(this);
         scroll.setBackgroundColor(BG);
 
         LinearLayout root = new LinearLayout(this);
@@ -69,14 +88,14 @@ public class MainActivity extends Activity {
         scroll.addView(root, new ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        TextView title = new TextView(this);
+        title = new TextView(this);
         title.setText("AwayFromShorts");
         title.setTextColor(TEXT);
         title.setTextSize(23);
         title.setTypeface(Typeface.DEFAULT_BOLD);
         root.addView(title);
 
-        TextView sub = new TextView(this);
+        sub = new TextView(this);
         sub.setText("设备所有者模式 · 到点冻结");
         sub.setTextColor(TEXT2);
         sub.setTextSize(13);
@@ -91,7 +110,7 @@ public class MainActivity extends Activity {
 
         /* ---------- 放行星期 ---------- */
         root.addView(sectionLabel("放行星期（其余时间一律屏蔽）"));
-        LinearLayout dayRow = new LinearLayout(this);
+        dayRow = new LinearLayout(this);
         dayRow.setOrientation(LinearLayout.HORIZONTAL);
         dayRow.setBackgroundColor(SURFACE);
         dayRow.setPadding(dp(8), dp(10), dp(8), dp(10));
@@ -146,7 +165,7 @@ public class MainActivity extends Activity {
             }
         });
 
-        Button applyBtn = button(root, "立即应用", BRAND, 0xFFFFFFFF);
+        applyBtn = button(root, "立即应用", BRAND, 0xFFFFFFFF);
         applyBtn.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 Config.arm(MainActivity.this);   // 确认过了，宽限立即结束
@@ -154,7 +173,7 @@ public class MainActivity extends Activity {
             }
         });
 
-        TextView foot = new TextView(this);
+        foot = new TextView(this);
         foot.setText("移除守卫只有一条路：\n"
                 + "adb shell dpm remove-active-admin com.afs.guard/.AfsAdmin");
         foot.setTextColor(TEXT2);
@@ -257,47 +276,122 @@ public class MainActivity extends Activity {
         int sm = Config.startMin(this);
         int em = Config.endMin(this);
 
+        // 屏蔽时段整页切深色。注意不是 setAlpha 那种"变灰"，
+        // 是底色、卡片、按钮全部换成深色系，一眼就能看出现在是锁着的。
+        applyDark(locked);
+
+        int text2 = locked ? TEXT2_DARK : TEXT2;
+        int offBg = locked ? OFF_DARK : OFF_LIGHT;
+        int offFg = locked ? 0xFF6E6E76 : 0xFF9A9AA0;
+
         status.setText(Guard.describe(this));
-        status.setTextColor(!owner ? RED : (blocked ? RED : GREEN));
+        int st;
+        if (!owner) {
+            st = locked ? RED_DARK : RED;
+        } else if (blocked) {
+            st = locked ? RED_DARK : RED;
+        } else {
+            st = locked ? GREEN_DARK : GREEN;
+        }
+        status.setTextColor(st);
 
         if (locked) {
             lockNote.setVisibility(View.VISIBLE);
             lockNote.setText("锁定中：这一页的设置现在改不了，到点自动解锁。没有解除按钮。");
+            lockNote.setTextColor(RED_DARK);
         } else if (blocked) {
             lockNote.setVisibility(View.VISIBLE);
             lockNote.setText("首次使用：配置还没确认，现在可以改。保存后按锁定规则走。");
+            lockNote.setTextColor(RED);
         } else {
             lockNote.setVisibility(View.GONE);
         }
 
+        result.setTextColor(text2);
+
         for (int i = 0; i < 7; i++) {
             boolean on = (daysMask & (1 << i)) != 0;
             dayBtns[i].setText(Config.DAY_NAMES[i]);
-            dayBtns[i].setTextColor(on ? 0xFFFFFFFF : TEXT2);
-            dayBtns[i].setBackgroundColor(on ? BRAND : 0xFFE3E5E7);
+            dayBtns[i].setTextColor(on ? 0xFFFFFFFF : (locked ? TEXT2_DARK : TEXT2));
+            dayBtns[i].setBackgroundColor(on ? BRAND : offBg);
             dayBtns[i].setEnabled(!locked);
-            dayBtns[i].setAlpha(locked ? 0.45f : 1f);
+            dayBtns[i].setAlpha(locked ? 0.55f : 1f);
         }
 
         startBtn.setText("起点 " + Guard.hm(sm / 60, sm % 60));
         endBtn.setText("终点 " + Guard.hm(em / 60, em % 60));
-        startBtn.setEnabled(!locked);
-        endBtn.setEnabled(!locked);
-        startBtn.setAlpha(locked ? 0.45f : 1f);
-        endBtn.setAlpha(locked ? 0.45f : 1f);
-
+        styleSecondary(startBtn, locked, offBg, offFg);
+        styleSecondary(endBtn, locked, offBg, offFg);
         pickBtn.setText("选择应用（已选 " + Targets.count(this) + " 个）");
-        pickBtn.setEnabled(!locked);
-        pickBtn.setAlpha(locked ? 0.45f : 1f);
+        styleSecondary(pickBtn, locked, offBg, offFg);
+        styleSecondary(applyBtn, locked, offBg, offFg);
 
         forceBtn.setEnabled(!locked);
-        forceBtn.setAlpha(locked ? 0.45f : 1f);
         forceBtn.setText(forceOn ? "关闭强制模式（当前：强制中）" : "开启强制模式");
-        forceBtn.setBackgroundColor(forceOn ? 0xFFB0352F : RED);
+        if (locked) {
+            forceBtn.setTextColor(offFg);
+            forceBtn.setBackgroundColor(offBg);
+            forceBtn.setAlpha(0.55f);
+        } else {
+            forceBtn.setTextColor(0xFFFFFFFF);
+            forceBtn.setBackgroundColor(forceOn ? 0xFFB0352F : RED);
+            forceBtn.setAlpha(1f);
+        }
 
         if (result.getText().length() == 0) {
             result.setText("尚未执行。");
         }
+    }
+
+    private boolean themeApplied = false;
+    private boolean darkState = false;
+
+    /** 整页配色：locked 为 true 时是深色，否则浅色。 */
+    private void applyDark(boolean d) {
+        // render() 每秒跑一次，颜色没变就别重设，免得每秒 invalidate 造成闪烁
+        if (themeApplied && d == darkState) {
+            return;
+        }
+        themeApplied = true;
+        darkState = d;
+        int surface = d ? SURFACE_DARK : SURFACE;
+        scroll.setBackgroundColor(d ? BG_DARK : BG);
+        // 状态栏颜色 + 图标明暗都要跟着切：
+        // 深色底配浅色图标，浅色底配深色图标，否则图标会糊在背景里看不见
+        try {
+            getWindow().setStatusBarColor(d ? BG_DARK : BG);
+            android.view.View v = getWindow().getDecorView();
+            int flags = v.getSystemUiVisibility();
+            if (d) {
+                flags &= ~android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+            } else {
+                flags |= android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+            }
+            v.setSystemUiVisibility(flags);
+        } catch (Throwable ignored) {
+        }
+        dayRow.setBackgroundColor(surface);
+        for (TextView v : cards) {
+            v.setBackgroundColor(surface);
+        }
+        for (TextView v : labels) {
+            v.setTextColor(d ? TEXT2_DARK : TEXT2);
+        }
+        title.setTextColor(d ? TEXT_DARK : TEXT);
+        sub.setTextColor(d ? TEXT2_DARK : TEXT2);
+        foot.setTextColor(d ? TEXT2_DARK : TEXT2);
+    }
+
+    /** 次要按钮：锁定时是深色块 + 暗字，不是半透明。 */
+    private void styleSecondary(Button b, boolean locked, int offBg, int offFg) {
+        b.setEnabled(!locked);
+        b.setTextColor(locked ? offFg : (darkSurface() ? TEXT_DARK : TEXT));
+        b.setBackgroundColor(locked ? offBg : (darkSurface() ? SURFACE_DARK : SURFACE));
+        b.setAlpha(locked ? 0.55f : 1f);
+    }
+
+    private boolean darkSurface() {
+        return Guard.isLockedNow(this);
     }
 
     /* ---------- 小工具 ---------- */
@@ -316,6 +410,7 @@ public class MainActivity extends Activity {
         v.setTextSize(12);
         v.setTextColor(TEXT2);
         v.setPadding(dp(2), dp(8), 0, dp(6));
+        labels.add(v);
         return v;
     }
 
@@ -330,6 +425,7 @@ public class MainActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lp.bottomMargin = dp(8);
         parent.addView(tv, lp);
+        cards.add(tv);
         return tv;
     }
 
