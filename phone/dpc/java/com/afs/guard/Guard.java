@@ -220,6 +220,9 @@ public final class Guard {
                 }
             }
         }
+        // ★ 每次 apply 都重排一次定时。package 覆盖安装会清掉所有 alarm/job，
+        // 而 schedule() 原本只在开机/闹钟/Job 回调里调用 —— 装完就再也排不上了。
+        schedule(ctx);
         return sb.toString();
     }
 
@@ -272,8 +275,11 @@ public final class Guard {
             PendingIntent pi = alarms(ctx);
             long at = nextFlipMillis();
             try {
-                if (Build.VERSION.SDK_INT >= 31 && !am.canScheduleExactAlarms()) {
-                    am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi);
+                // ★ 用 setAlarmClock：它是系统闹钟级，ColorOS 的 OplusAlarmAdjustment
+                // 不敢批处理它，窗口恒为 0。setExactAndAllowWhileIdle 实测被拉成 1 小时窗口，
+                // 边界会晚整整一小时才触发，放行时段等于白给。
+                if (Build.VERSION.SDK_INT >= 21) {
+                    am.setAlarmClock(new AlarmManager.AlarmClockInfo(at, pi), pi);
                 } else if (Build.VERSION.SDK_INT >= 23) {
                     am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi);
                 } else {
