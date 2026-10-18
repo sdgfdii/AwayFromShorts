@@ -196,14 +196,15 @@ public final class Guard {
                 try {
                     d.setPackagesSuspended(a, new String[] { p }, false);
                     d.setUninstallBlocked(a, p, false);
-                    sb.append("- ").append(p).append("：已移出列表，解冻\n");
+                    sb.append("- ").append(labelOf(pm, p)).append("：已移出列表，解冻\n");
                 } catch (Throwable ignored) {
                 }
             }
         }
         for (String p : now) {
+            String label = labelOf(pm, p);
             if (!installed(pm, p)) {
-                sb.append("- ").append(p).append("：未安装，跳过\n");
+                sb.append("- ").append(p).append("：未安装\n");
                 continue;
             }
             try {
@@ -217,7 +218,9 @@ public final class Guard {
             } catch (Throwable t) {
                 state = "冻结失败：" + t.getClass().getSimpleName();
             }
-            sb.append("- ").append(p).append("：").append(state).append('\n');
+            // 应用名在前、包名在后：名字给人看，包名方便核对是哪个版本
+            sb.append("- ").append(label).append("（").append(p).append("）：")
+                    .append(state).append('\n');
         }
         Targets.setApplied(ctx, now);
 
@@ -277,6 +280,15 @@ public final class Guard {
         try {
             d.addUserRestriction(a, restriction);
         } catch (Throwable ignored) {
+        }
+    }
+
+    /** 应用名；取不到就退回包名。 */
+    private static String labelOf(PackageManager pm, String pkg) {
+        try {
+            return String.valueOf(pm.getApplicationInfo(pkg, 0).loadLabel(pm));
+        } catch (Throwable t) {
+            return pkg;
         }
     }
 
@@ -359,7 +371,7 @@ public final class Guard {
         sb.append("放行时段　").append(hm(sm / 60, sm % 60))
                 .append(" - ").append(hm(em / 60, em % 60))
                 .append(sm > em ? "（跨午夜）" : "").append('\n');
-        sb.append("强制模式　").append(force ? "已开启（一律冻结，放行时段可关闭）" : "未开启").append('\n');
+        sb.append("强制模式　").append(force ? "已开启（放行时段才能关）" : "未开启").append('\n');
         sb.append("现在状态　").append(isBlockedNow(ctx) ? "屏蔽中" : "放行中").append('\n');
         sb.append("下次切换　").append(stamp(nextFlipMillis(now, daysMask, sm, em))).append('\n');
         sb.append('\n');
@@ -383,14 +395,24 @@ public final class Guard {
     }
 
     private static String restrictionSummary() {
+        java.util.List<String> items = new java.util.ArrayList<String>();
+        if (BLOCK_FACTORY_RESET) items.add("禁恢复出厂");
+        if (BLOCK_SAFE_BOOT)     items.add("禁安全模式");
+        if (BLOCK_APPS_CONTROL)  items.add("禁强停/清数据");
+        if (BLOCK_TIME_CHANGE)   items.add("禁改时间");
+        if (BLOCK_UNINSTALL_ALL) items.add("禁卸载");
+        if (items.isEmpty()) {
+            return "无";
+        }
+        // 每两项一行。(char)10 = 换行, (char)0x3000 = 全角空格
         StringBuilder sb = new StringBuilder();
-        if (BLOCK_FACTORY_RESET) sb.append("禁恢复出厂 ");
-        if (BLOCK_SAFE_BOOT)     sb.append("禁安全模式 ");
-        if (BLOCK_APPS_CONTROL)  sb.append("禁强停/清数据 ");
-        if (BLOCK_TIME_CHANGE)   sb.append("禁改时间 ");
-        if (BLOCK_UNINSTALL_ALL) sb.append("禁卸载 ");
-        String s = sb.toString().trim();
-        return s.length() == 0 ? "无" : s;
+        for (int i = 0; i < items.size(); i++) {
+            if (i > 0) {
+                sb.append(i % 2 == 0 ? (char) 10 : (char) 0x3000);
+            }
+            sb.append(items.get(i));
+        }
+        return sb.toString();
     }
 
     public static String hm(int h, int m) {

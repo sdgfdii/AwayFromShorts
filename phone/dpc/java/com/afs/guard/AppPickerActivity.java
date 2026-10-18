@@ -221,6 +221,14 @@ public class AppPickerActivity extends Activity {
                 tv.setTextColor(Color.parseColor("#18191c"));
                 tv.setPadding(dp(14), 0, dp(8), 0);
                 tv.setGravity(Gravity.CENTER_VERTICAL);
+                // 名称必须完整显示：允许折行，不省略
+                tv.setSingleLine(false);
+                tv.setEllipsize(null);
+                tv.setMaxLines(3);
+                // 名称必须完整显示：允许折行，不省略
+                tv.setSingleLine(false);
+                tv.setEllipsize(null);
+                tv.setMaxLines(3);
                 row.addView(tv, new LinearLayout.LayoutParams(0,
                         ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
