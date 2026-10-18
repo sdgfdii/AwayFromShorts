@@ -17,12 +17,34 @@
 
 ---
 
-## 0. 先确认一件事
+## 0. 先确认一件事：要不要恢复出厂
 
-`dpm set-device-owner` 要求设备上**没有任何账号**（Google 账号、OPPO 账号、微信里的企业账号都算），
-也不能有工作资料。所以现实里通常是：**恢复出厂 → 跳过账号登录 → 立刻装这个 → 再登账号**。
+`dpm set-device-owner` 要求设备上**没有任何账号**（Google / OPPO / 微信 / QQ / 支付宝都算），
+也不能有应用分身和工作资料。
 
-如果不想恢复出厂，就先试一次，报错 `there are already some accounts on the device` 再决定。
+**先别清机，按这个顺序试**——多数机器删完账号就通了（先照 §2 打开 USB 调试并连上电脑）：
+
+```bash
+ADB="C:/Users/nj/.afs-android/sdk/platform-tools/adb.exe"
+
+# 1) 看看有哪些账号
+"$ADB" shell dumpsys account | grep "Account {"
+
+# 2) 每删掉一个，就重跑一次设置命令
+"$ADB" shell dpm set-device-owner com.afs.guard/.AfsAdmin
+```
+
+删账号的顺序：Google / OPPO 先删（无痛），微信放最后（删之前先备份聊天记录）。
+
+| 报错 | 含义 | 处理 |
+|---|---|---|
+| `already some accounts` | 还有账号没删干净 | 继续删，看 `dumpsys account` |
+| `already several users` | 开了应用分身 / 隐私空间 | 先全部关掉 |
+| `already provisioned` | OEM 额外限制 | **这条才需要恢复出厂** |
+| `Success: Device owner set to package` | 成功 | 收工，账号可以逐个登回去 |
+
+只有最后那条「恢复出厂」的路，顺序才是：**恢复出厂 → 跳过账号登录 → 装 APK 设 DO → 再登账号**。
+设成 DO 之后**不能**再走这条路，`DISALLOW_FACTORY_RESET` 会把「恢复出厂」按钮变灰。
 
 ---
 
