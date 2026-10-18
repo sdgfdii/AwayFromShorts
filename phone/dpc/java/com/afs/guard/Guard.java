@@ -26,7 +26,7 @@ public final class Guard {
     /* ==================== 可调参数 ==================== */
 
     /** 允许使用抖音的时段（含起点，不含终点）。支持跨午夜，例如 23:00 -> 20:00 */
-    public static final int ALLOW_START_H = 20;
+    public static final int ALLOW_START_H = 22;
     public static final int ALLOW_START_M = 0;
     public static final int ALLOW_END_H   = 23;
     public static final int ALLOW_END_M   = 0;
