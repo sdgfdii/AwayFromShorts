@@ -39,11 +39,15 @@ App 本身，只能在系统层面把 App 冻住。
 | [`phone/dpc`](phone/dpc/) | **Device Owner** 到点冻结 App | ✅ **真的锁死**：恢复出厂按钮变灰、强停和卸载都点不动、安全模式进不去、改系统时间也拦 | 需要恢复出厂一次（[可行性自查](phone/dpc/COMPATIBILITY.md)） |
 | [`phone/blocker`](phone/blocker/) | 无障碍服务把 App 踢回桌面 + Shizuku 强杀进程 | ⚠️ 中：能拦，但你随时能在设置里关掉 | 装完即用 |
 
+<img src="docs/screenshots/demo.gif" width="300" alt="演示：放行 → 到点冻结 → 打开被系统拦">
+
 <img src="docs/screenshots/03-blocked.png" width="240" alt="屏蔽中">
 <img src="docs/screenshots/01-light.png" width="240" alt="放行中">
 <img src="docs/screenshots/02-picker.png" width="240" alt="选择应用">
 
 屏蔽时段整页变黑、所有控件禁用；放行时段切回浅色可编辑。
+第三个画面是点开抖音时的系统弹窗 —— 不是 App 自己弹的，是 Android 的
+`ActionDisabledByAdminDialog`，App 自己一行代码都没参与。
 
 不想自己编，直接下 APK：[Releases](https://github.com/sdgfdii/AwayFromShorts/releases/latest)
 

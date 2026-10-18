@@ -24,11 +24,17 @@ There is also a lighter Android option in `phone/blocker/` (Accessibility Servic
 
 ## Android: the hard-lock version
 
+<img src="docs/screenshots/demo.gif" width="300" alt="demo: allowed → auto-freeze at schedule → launch blocked by the system">
+
 <img src="docs/screenshots/03-blocked.png" width="260" alt="blocked state"> <img src="docs/screenshots/01-light.png" width="260" alt="allowed state"> <img src="docs/screenshots/02-picker.png" width="260" alt="app picker">
 
 Left: blocked state — the whole UI goes dark, every control is disabled.
 Middle: allowed state — light theme, settings editable.
 Right: pick which apps to freeze.
+
+The third frame of the GIF is what you see when you tap the frozen app: that dialog is
+Android's own `ActionDisabledByAdminDialog`, not something the app draws — the app isn't
+even running at that point.
 
 ### Why Device Owner
 

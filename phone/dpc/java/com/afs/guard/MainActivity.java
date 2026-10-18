@@ -215,12 +215,14 @@ public class MainActivity extends Activity {
 
     private void runApply() {
         final MainActivity self = this;
+        applying = true;
         new Thread(new Runnable() {
             public void run() {
                 final String msg = Guard.apply(self);
                 new Handler(Looper.getMainLooper()).post(new Runnable() {
                     public void run() {
                         result.setText(msg);
+                        applying = false;
                         render();
                     }
                 });
@@ -275,6 +277,24 @@ public class MainActivity extends Activity {
         int daysMask = Config.days(this);
         int sm = Config.startMin(this);
         int em = Config.endMin(this);
+
+        // 翻转的那一刻（比如 21:00 到点）顺手把结果卡也刷新一遍。
+        // 不这么做的话，屏幕上会同时出现「现在状态：屏蔽中」和「模式：放行」，
+        // 因为结果卡里存的是上一次 apply 的文本。
+        if (firstRender) {
+            firstRender = false;
+            lastBlocked = blocked;
+            // 打开界面先按当前配置落地一次。覆盖安装会清掉包的闹钟，
+            // 不这么做的话「装完打开看一眼」等于没生效，得手动点一次「立即应用」。
+            if (!applying) {
+                runApply();
+            }
+        } else if (blocked != lastBlocked) {
+            lastBlocked = blocked;
+            if (!applying) {
+                runApply();
+            }
+        }
 
         // 屏蔽时段整页切深色。注意不是 setAlpha 那种"变灰"，
         // 是底色、卡片、按钮全部换成深色系，一眼就能看出现在是锁着的。
@@ -343,6 +363,9 @@ public class MainActivity extends Activity {
         }
     }
 
+    private boolean applying;
+    private boolean lastBlocked;
+    private boolean firstRender = true;
     private boolean themeApplied = false;
     private boolean darkState = false;
 
