@@ -25,12 +25,6 @@ public final class Guard {
 
     /* ==================== 可调参数 ==================== */
 
-    /** 允许使用抖音的时段（含起点，不含终点）。支持跨午夜，例如 23:00 -> 20:00 */
-    public static final int ALLOW_START_H = 22;
-    public static final int ALLOW_START_M = 0;
-    public static final int ALLOW_END_H   = 23;
-    public static final int ALLOW_END_M   = 0;
-
     /** 默认管哪些包 —— 用户没在「选择应用」里改过就用这个 */
     public static final String[] DEFAULT_TARGETS = new String[] {
             "com.ss.android.ugc.aweme",       // 抖音
@@ -87,59 +81,79 @@ public final class Guard {
 
     /* ==================== 时间窗口 ==================== */
 
-    public static int startMin() {
-        return ALLOW_START_H * 60 + ALLOW_START_M;
-    }
-
-    public static int endMin() {
-        return ALLOW_END_H * 60 + ALLOW_END_M;
-    }
-
-    public static boolean inWindow(int minuteOfDay) {
-        int s = startMin();
-        int e = endMin();
-        if (s == e) {
+    /**
+     * 现在是否屏蔽。三个来源：
+     *   1) 强制模式中            → 无条件屏蔽
+     *   2) 今天不在选中的星期    → 全天屏蔽
+     *   3) 不在 [start, end) 里  → 屏蔽
+     *
+     * 跨午夜（start > end）时，"选中的星期"指窗口起始日：
+     * 周一 23:00–次日 20:00 的凌晨那段，算周一的窗口。
+     */
+    public static boolean isBlocked(Calendar c, int daysMask, int startMin, int endMin, long forceUntil) {
+        if (forceUntil > c.getTimeInMillis()) {
             return true;
         }
-        if (s < e) {
-            return minuteOfDay >= s && minuteOfDay < e;
+        int mod = c.get(Calendar.HOUR_OF_DAY) * 60 + c.get(Calendar.MINUTE);
+        int s = norm(startMin);
+        int e = norm(endMin);
+        int today = Config.monIndex(c);
+        int yesterday = (today + 6) % 7;
+
+        if (s == e) {
+            // 起止相同 = 全天放行（只对选中的星期生效）
+            return !Config.daySelected(daysMask, today);
         }
-        return minuteOfDay >= s || minuteOfDay < e;   // 跨午夜
+        if (s < e) {
+            boolean ok = Config.daySelected(daysMask, today) && mod >= s && mod < e;
+            return !ok;
+        }
+        // 跨午夜
+        boolean evening = Config.daySelected(daysMask, today) && mod >= s;
+        boolean morning = Config.daySelected(daysMask, yesterday) && mod < e;
+        return !(evening || morning);
     }
 
-    public static boolean inWindow(Calendar c) {
-        return inWindow(c.get(Calendar.HOUR_OF_DAY) * 60 + c.get(Calendar.MINUTE));
+    /** 当前配置下是否屏蔽。 */
+    public static boolean isBlockedNow(Context ctx) {
+        return isBlocked(Calendar.getInstance(), Config.days(ctx),
+                Config.startMin(ctx), Config.endMin(ctx), Config.forceUntil(ctx));
     }
 
-    public static boolean allowNow() {
-        return inWindow(Calendar.getInstance());
+    /**
+     * 现在能不能改设置。跟 isBlocked 同义，唯一区别是：
+     * 从没保存过配置时放行一次，否则装完正好落在屏蔽时段就成死锁了。
+     */
+    public static boolean isLockedNow(Context ctx) {
+        if (!isBlockedNow(ctx)) {
+            return false;
+        }
+        return !Config.inGrace(ctx);
     }
 
-    /** 下一次状态翻转的时刻（毫秒）。找不到就一小时后兜底。 */
-    public static long nextFlipMillis() {
-        return nextFlipMillis(Calendar.getInstance());
-    }
-
-    /** 同上，但允许注入"现在"，方便离线回归测试。 */
-    public static long nextFlipMillis(Calendar now) {
-        boolean allow = inWindow(now);
-        for (int dayOffset = 0; dayOffset <= 1; dayOffset++) {
-            for (int i = 0; i < 2; i++) {
-                Calendar t = (Calendar) now.clone();
-                t.add(Calendar.DAY_OF_YEAR, dayOffset);
-                t.set(Calendar.HOUR_OF_DAY, i == 0 ? ALLOW_START_H : ALLOW_END_H);
-                t.set(Calendar.MINUTE, i == 0 ? ALLOW_START_M : ALLOW_END_M);
-                t.set(Calendar.SECOND, 0);
-                t.set(Calendar.MILLISECOND, 0);
-                if (t.getTimeInMillis() <= now.getTimeInMillis()) {
-                    continue;
-                }
-                if (inWindow(t) != allow) {
-                    return t.getTimeInMillis();
-                }
+    /**
+     * 下一次状态翻转的时刻（毫秒）。
+     *
+     * 逐分钟扫，最多扫 8 天。以前的"跳到下一个边界"算法在引入星期之后会算错
+     * （比如只选周一，下一个边界得跳过整整六天），逐分钟扫反而简单可靠：
+     * 8×1440 = 11520 次循环，微秒级，没必要优化。
+     */
+    public static long nextFlipMillis(Calendar now, int daysMask, int startMin, int endMin) {
+        Calendar t = (Calendar) now.clone();
+        t.set(Calendar.SECOND, 0);
+        t.set(Calendar.MILLISECOND, 0);
+        boolean cur = isBlocked(t, daysMask, startMin, endMin, 0L);
+        for (int i = 0; i < 8 * 1440 + 2; i++) {
+            t.add(Calendar.MINUTE, 1);
+            if (isBlocked(t, daysMask, startMin, endMin, 0L) != cur) {
+                return t.getTimeInMillis();
             }
         }
         return now.getTimeInMillis() + 3600000L;
+    }
+
+    private static int norm(int minuteOfDay) {
+        return ((minuteOfDay % 1440) + 1440) % 1440;
     }
 
     /* ==================== 落地 ==================== */
@@ -158,7 +172,7 @@ public final class Guard {
         }
 
         ComponentName a = admin(ctx);
-        boolean allow = allowNow();
+        boolean allow = !isBlockedNow(ctx);
         applyRestrictions(ctx, d, a);
 
         StringBuilder sb = new StringBuilder();
@@ -273,7 +287,8 @@ public final class Guard {
         AlarmManager am = (AlarmManager) ctx.getSystemService(Context.ALARM_SERVICE);
         if (am != null) {
             PendingIntent pi = alarms(ctx);
-            long at = nextFlipMillis();
+            long at = nextFlipMillis(Calendar.getInstance(),
+                    Config.days(ctx), Config.startMin(ctx), Config.endMin(ctx));
             try {
                 // ★ 用 setAlarmClock：它是系统闹钟级，ColorOS 的 OplusAlarmAdjustment
                 // 不敢批处理它，窗口恒为 0。setExactAndAllowWhileIdle 实测被拉成 1 小时窗口，
@@ -327,18 +342,37 @@ public final class Guard {
         StringBuilder sb = new StringBuilder();
         sb.append("设备所有者　").append(isOwner(ctx) ? "是（已锁死）" : "否 —— 冻结不会生效").append('\n');
         sb.append("当前时间　").append(stamp(now.getTimeInMillis())).append('\n');
-        sb.append("允许时段　").append(hm(ALLOW_START_H, ALLOW_START_M))
-                .append(" - ").append(hm(ALLOW_END_H, ALLOW_END_M))
-                .append(isCrossDay() ? "（跨午夜）" : "").append('\n');
-        sb.append("现在状态　").append(allowNow() ? "放行中" : "屏蔽中").append('\n');
-        sb.append("下次切换　").append(stamp(nextFlipMillis())).append('\n');
+        int daysMask = Config.days(ctx);
+        int sm = Config.startMin(ctx);
+        int em = Config.endMin(ctx);
+        long force = Config.forceUntil(ctx);
+        sb.append("放行星期　").append(Config.daysText(daysMask)).append('\n');
+        sb.append("放行时段　").append(hm(sm / 60, sm % 60))
+                .append(" - ").append(hm(em / 60, em % 60))
+                .append(sm > em ? "（跨午夜）" : "").append('\n');
+        if (force > now.getTimeInMillis()) {
+            sb.append("强制模式　剩余 ").append(remainText(force - now.getTimeInMillis())).append('\n');
+        }
+        sb.append("现在状态　").append(isBlockedNow(ctx) ? "屏蔽中" : "放行中").append('\n');
+        sb.append("下次切换　").append(stamp(nextFlipMillis(now, daysMask, sm, em))).append('\n');
         sb.append('\n');
         sb.append("加固项　").append(restrictionSummary()).append('\n');
         return sb.toString();
     }
 
-    public static boolean isCrossDay() {
-        return startMin() > endMin();
+    public static boolean isCrossDay(Context ctx) {
+        return Config.startMin(ctx) > Config.endMin(ctx);
+    }
+
+    /** 剩余时间文案。 */
+    public static String remainText(long millis) {
+        if (millis <= 0) {
+            return "0 分";
+        }
+        long totalMin = millis / 60000L;
+        long h = totalMin / 60;
+        long m = totalMin % 60;
+        return h > 0 ? (h + " 小时 " + m + " 分") : (m + " 分");
     }
 
     private static String restrictionSummary() {
@@ -352,7 +386,7 @@ public final class Guard {
         return s.length() == 0 ? "无" : s;
     }
 
-    private static String hm(int h, int m) {
+    public static String hm(int h, int m) {
         StringBuilder sb = new StringBuilder();
         pad(sb, h);
         sb.append(':');
