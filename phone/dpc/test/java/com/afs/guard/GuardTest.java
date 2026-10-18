@@ -124,21 +124,26 @@ public final class GuardTest {
     /* ---------- 5. 强制模式 ---------- */
 
     private static void forceTests() {
-        System.out.println("---- 强制模式 ----");
+        System.out.println("---- 强制模式（开关式，无持续时间）----");
         int days = 0x7F;
         int s = 22 * 60;
         int e = 23 * 60;
-        Calendar c = at(2026, 10, 19, 22, 30);
-        long t = c.getTimeInMillis();
 
-        eq(Guard.isBlocked(c, days, s, e, t + 3600_000L), true,
-                "★ 放行时段里开强制 → 仍然屏蔽");
-        eq(Guard.isBlocked(c, days, s, e, t - 1L), false, "强制过期后回到放行");
-        eq(Guard.isBlocked(c, days, s, e, t), false, "forceUntil == now 视为已结束");
+        Calendar inWin = at(2026, 10, 19, 22, 30);
+        Calendar outWin = at(2026, 10, 19, 12, 0);
 
-        Calendar noon = at(2026, 10, 19, 12, 0);
-        eq(Guard.isBlocked(noon, days, s, e, noon.getTimeInMillis() + 60000L), true,
-                "屏蔽时段里开强制 → 屏蔽");
+        eq(Guard.isBlocked(inWin, days, s, e, true), true,
+                "★ 放行时段 + 强制 → 仍然屏蔽");
+        eq(Guard.isBlocked(outWin, days, s, e, true), true,
+                "屏蔽时段 + 强制 → 屏蔽");
+        eq(Guard.isBlocked(inWin, days, s, e, false), false,
+                "放行时段 + 未强制 → 放行");
+        eq(Guard.isBlocked(outWin, days, s, e, false), true,
+                "屏蔽时段 + 未强制 → 屏蔽");
+
+        // 锁定只看时间表：强制模式下，放行时段仍然要能关掉自己
+        ok(!Guard.isBlocked(inWin, days, s, e, false),
+                "锁定判定用 inWindow：强制中但处在放行窗口 → 不锁（否则关不掉）");
     }
 
     /* ---------- 6. 文案 ---------- */
@@ -170,7 +175,7 @@ public final class GuardTest {
                 f.setTimeInMillis(flip);
                 Calendar before = Calendar.getInstance();
                 before.setTimeInMillis(flip - 60000L);
-                if (Guard.isBlocked(f, days, s, e, 0L) == Guard.isBlocked(before, days, s, e, 0L)) {
+                if (Guard.isBlocked(f, days, s, e, false) == Guard.isBlocked(before, days, s, e, false)) {
                     bad++;
                 }
             }
@@ -180,7 +185,7 @@ public final class GuardTest {
     }
 
     private static boolean blocked(int days, int s, int e, int y, int mo, int d, int hh, int mm) {
-        return Guard.isBlocked(at(y, mo, d, hh, mm), days, s, e, 0L);
+        return Guard.isBlocked(at(y, mo, d, hh, mm), days, s, e, false);
     }
 
     private static Calendar at(int y, int mo, int d, int hh, int mm) {

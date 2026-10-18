@@ -90,8 +90,8 @@ public final class Guard {
      * 跨午夜（start > end）时，"选中的星期"指窗口起始日：
      * 周一 23:00–次日 20:00 的凌晨那段，算周一的窗口。
      */
-    public static boolean isBlocked(Calendar c, int daysMask, int startMin, int endMin, long forceUntil) {
-        if (forceUntil > c.getTimeInMillis()) {
+    public static boolean isBlocked(Calendar c, int daysMask, int startMin, int endMin, boolean force) {
+        if (force) {
             return true;
         }
         int mod = c.get(Calendar.HOUR_OF_DAY) * 60 + c.get(Calendar.MINUTE);
@@ -117,7 +117,13 @@ public final class Guard {
     /** 当前配置下是否屏蔽。 */
     public static boolean isBlockedNow(Context ctx) {
         return isBlocked(Calendar.getInstance(), Config.days(ctx),
-                Config.startMin(ctx), Config.endMin(ctx), Config.forceUntil(ctx));
+                Config.startMin(ctx), Config.endMin(ctx), Config.forceOn(ctx));
+    }
+
+    /** 现在是否落在时间表的放行窗口里（不考虑强制模式）。 */
+    public static boolean inWindowNow(Context ctx) {
+        return !isBlocked(Calendar.getInstance(), Config.days(ctx),
+                Config.startMin(ctx), Config.endMin(ctx), false);
     }
 
     /**
@@ -125,7 +131,10 @@ public final class Guard {
      * 从没保存过配置时放行一次，否则装完正好落在屏蔽时段就成死锁了。
      */
     public static boolean isLockedNow(Context ctx) {
-        if (!isBlockedNow(ctx)) {
+        // ★ 只看时间表，不看强制模式。
+        // 如果用 isBlockedNow 判定，强制模式开着时就永远是"锁定"，
+        // 连放行时段也关不掉 —— 自己把自己锁死。
+        if (inWindowNow(ctx)) {
             return false;
         }
         return !Config.inGrace(ctx);
@@ -142,10 +151,10 @@ public final class Guard {
         Calendar t = (Calendar) now.clone();
         t.set(Calendar.SECOND, 0);
         t.set(Calendar.MILLISECOND, 0);
-        boolean cur = isBlocked(t, daysMask, startMin, endMin, 0L);
+        boolean cur = isBlocked(t, daysMask, startMin, endMin, false);
         for (int i = 0; i < 8 * 1440 + 2; i++) {
             t.add(Calendar.MINUTE, 1);
-            if (isBlocked(t, daysMask, startMin, endMin, 0L) != cur) {
+            if (isBlocked(t, daysMask, startMin, endMin, false) != cur) {
                 return t.getTimeInMillis();
             }
         }
@@ -345,14 +354,12 @@ public final class Guard {
         int daysMask = Config.days(ctx);
         int sm = Config.startMin(ctx);
         int em = Config.endMin(ctx);
-        long force = Config.forceUntil(ctx);
+        boolean force = Config.forceOn(ctx);
         sb.append("放行星期　").append(Config.daysText(daysMask)).append('\n');
         sb.append("放行时段　").append(hm(sm / 60, sm % 60))
                 .append(" - ").append(hm(em / 60, em % 60))
                 .append(sm > em ? "（跨午夜）" : "").append('\n');
-        if (force > now.getTimeInMillis()) {
-            sb.append("强制模式　剩余 ").append(remainText(force - now.getTimeInMillis())).append('\n');
-        }
+        sb.append("强制模式　").append(force ? "已开启（一律冻结，放行时段可关闭）" : "未开启").append('\n');
         sb.append("现在状态　").append(isBlockedNow(ctx) ? "屏蔽中" : "放行中").append('\n');
         sb.append("下次切换　").append(stamp(nextFlipMillis(now, daysMask, sm, em))).append('\n');
         sb.append('\n');

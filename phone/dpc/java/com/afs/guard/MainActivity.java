@@ -139,13 +139,17 @@ public class MainActivity extends Activity {
         forceBtn = button(root, "开启强制模式", RED, 0xFFFFFFFF);
         forceBtn.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
-                pickForce();
+                boolean on = Config.forceOn(MainActivity.this);
+                Config.setForce(MainActivity.this, !on);
+                toast(on ? "强制模式已关闭" : "强制模式已开启：一律冻结，屏蔽时段内关不掉");
+                runApply();
             }
         });
 
         Button applyBtn = button(root, "立即应用", BRAND, 0xFFFFFFFF);
         applyBtn.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
+                Config.arm(MainActivity.this);   // 确认过了，宽限立即结束
                 runApply();
             }
         });
@@ -205,22 +209,6 @@ public class MainActivity extends Activity {
         }).start();
     }
 
-    private void pickForce() {
-        final String[] items = {"1 小时", "3 小时", "6 小时", "12 小时"};
-        final long[] ms = {1, 3, 6, 12};
-        new AlertDialog.Builder(this)
-                .setTitle("强制模式持续多久？")
-                .setItems(items, new DialogInterface.OnClickListener() {
-                    public void onClick(DialogInterface d, int which) {
-                        Config.startForce(MainActivity.this, ms[which] * 3600_000L);
-                        toast("已开启，" + items[which] + " 内既不能解除，也不能改设置");
-                        runApply();
-                    }
-                })
-                .setNegativeButton("取消", null)
-                .show();
-    }
-
     private Button timeButton(LinearLayout parent, final boolean isStart) {
         Button b = new Button(this);
         b.setAllCaps(false);
@@ -264,8 +252,7 @@ public class MainActivity extends Activity {
         boolean owner = Guard.isOwner(this);
         boolean blocked = Guard.isBlockedNow(this);
         boolean locked = Guard.isLockedNow(this);
-        long force = Config.forceUntil(this);
-        boolean forceOn = force > System.currentTimeMillis();
+        boolean forceOn = Config.forceOn(this);
         int daysMask = Config.days(this);
         int sm = Config.startMin(this);
         int em = Config.endMin(this);
@@ -305,9 +292,7 @@ public class MainActivity extends Activity {
 
         forceBtn.setEnabled(!locked);
         forceBtn.setAlpha(locked ? 0.45f : 1f);
-        forceBtn.setText(forceOn
-                ? "强制模式剩余 " + Guard.remainText(force - System.currentTimeMillis())
-                : "开启强制模式");
+        forceBtn.setText(forceOn ? "关闭强制模式（当前：强制中）" : "开启强制模式");
         forceBtn.setBackgroundColor(forceOn ? 0xFFB0352F : RED);
 
         if (result.getText().length() == 0) {

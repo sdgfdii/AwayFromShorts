@@ -16,8 +16,9 @@ public final class Config {
     private static final String K_DAYS = "days";
     private static final String K_START = "start_min";
     private static final String K_END = "end_min";
-    private static final String K_FORCE = "force_until";
+    private static final String K_FORCE = "force_on";
     private static final String K_FIRST_SEEN = "first_seen";
+    private static final String K_ARMED = "armed";
 
     /** 默认：每天 22:00–23:00 放行 */
     private static final int DEFAULT_DAYS = 0x7F;
@@ -97,16 +98,18 @@ public final class Config {
 
     /* ---------- 强制模式 ---------- */
 
-    public static long forceUntil(Context c) {
-        return sp(c).getLong(K_FORCE, 0L);
+    /**
+     * 强制模式开关。没有持续时间 —— 开了就一直强制，直到在放行时段自己关掉。
+     *
+     * 为什么不做"关多久"：需求是"屏蔽时段内无法关闭"，
+     * 如果带时间就会变成"到点自动解除"，那是两回事。
+     */
+    public static boolean forceOn(Context c) {
+        return sp(c).getBoolean(K_FORCE, false);
     }
 
-    public static boolean forceActive(Context c) {
-        return forceUntil(c) > System.currentTimeMillis();
-    }
-
-    public static void startForce(Context c, long durationMs) {
-        sp(c).edit().putLong(K_FORCE, System.currentTimeMillis() + durationMs).apply();
+    public static void setForce(Context c, boolean on) {
+        sp(c).edit().putBoolean(K_FORCE, on).apply();
     }
 
     /* ---------- 首次宽限 ---------- */
@@ -130,7 +133,15 @@ public final class Config {
         return v;
     }
 
+    /** 点过「立即应用」= 用户确认过了，宽限立即结束，不再等 10 分钟。 */
+    public static void arm(Context c) {
+        sp(c).edit().putBoolean(K_ARMED, true).apply();
+    }
+
     public static boolean inGrace(Context c) {
+        if (sp(c).getBoolean(K_ARMED, false)) {
+            return false;
+        }
         long first = firstSeenAt(c);
         return System.currentTimeMillis() - first < GRACE_MS;
     }
