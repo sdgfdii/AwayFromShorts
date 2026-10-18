@@ -22,7 +22,36 @@
 | 🖥 可视化面板 | 本地网页 (127.0.0.1) 配置一切,改完最长 1 分钟生效 |
 | 🧹 一键卸载 | 删除计划任务、恢复 hosts、清理文件,不留痕迹 |
 
-## 🚀 一键安装(推荐)
+## 📱 手机端（Android）
+
+上面这些是**电脑**上的。手机上要做到"真的刷不了"是另一回事——手机上没有任何"网站屏蔽"能拦住抖音
+App 本身，只能在系统层面把 App 冻住。
+
+`phone/` 里有两个独立实现，任选：
+
+| 目录 | 做法 | 强度 | 前提 |
+| --- | --- | --- | --- |
+| [`phone/dpc`](phone/dpc/) | **Device Owner** 到点冻结 App | ✅ **真的锁死**：恢复出厂按钮变灰、强停和卸载都点不动、安全模式进不去、改系统时间也拦 | 需要恢复出厂一次（[可行性自查](phone/dpc/COMPATIBILITY.md)） |
+| [`phone/blocker`](phone/blocker/) | 无障碍服务把 App 踢回桌面 + Shizuku 强杀进程 | ⚠️ 中：能拦，但你随时能在设置里关掉 | 装完即用 |
+
+一条命令部署（连上手机、开 USB 调试即可）：
+
+```bash
+cd phone/dpc
+bash deploy.sh
+```
+
+脚本会先自检三个硬条件（无账号、单用户、无已有 Owner），不满足会直接告诉你卡在哪、
+怎么解。装不上的机器，先看 [`COMPATIBILITY.md`](phone/dpc/COMPATIBILITY.md)——
+90% 的情况是"应用分身"留下的第二个用户，跟机型无关。
+
+拆掉它只有一条路：
+
+```bash
+cd phone/dpc && bash uninstall.sh
+```
+
+## 🚀 Windows 一键安装(推荐)
 
 **最简单: 下载单文件 EXE,双击,点一下 UAC「是」,完事。** 不需要解压、不需要命令行:
 
@@ -123,7 +152,7 @@ AwayFromShorts/
 │   ├── build-release.ps1  # 打包发布 ZIP
 │   ├── build-setup.ps1    # 生成单文件 EXE 安装器(内嵌 zip)
 │   └── release.ps1        # 打包 → 提交 → 打 tag → 发布 Release
-└── src/
+├── src/
     ├── core.ps1           # 核心函数: 配置/计划/hosts/进程/浏览器窗口
     ├── awayfromshorts.ps1 # 屏蔽引擎(计划任务每分钟跑)
     ├── close-browser-windows.ps1
@@ -133,6 +162,21 @@ AwayFromShorts/
     ├── uninstall.ps1      # 卸载逻辑
     ├── config.example.json
     └── web/index.html     # 面板前端(单文件,零依赖)
+├── phone/                 # 手机端
+│   ├── dpc/               # Device Owner 版（真锁死）
+│   │   ├── deploy.sh          # 一键部署（自带前提自检）
+│   │   ├── uninstall.sh       # 唯一逃生口
+│   │   ├── build.sh           # 手工构建，不用 Gradle
+│   │   ├── COMPATIBILITY.md   # 跨机型可行性
+│   │   ├── test/run.sh        # 离线回归（38 项，不用手机）
+│   │   └── java/com/afs/guard/
+│   ├── blocker/           # 无障碍版（无需 DO）
+│   │   ├── build.sh
+│   │   ├── README.md
+│   │   └── test/run.sh
+│   ├── afs-guard.apk      # DO 版产物
+│   └── afs-blocker.apk    # 无障碍版产物
+└── tools/                 # 前端 / 样式离线校验
 ```
 
 ## ❓ 常见问题

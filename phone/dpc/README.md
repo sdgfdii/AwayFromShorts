@@ -1,4 +1,37 @@
-# AFS 守卫（Device Owner 版）
+# AwayFromShorts · Device Owner 版
+
+手机上唯一真正锁得住的方案：把 App 变成 **Device Owner（设备所有者）**，然后用
+`setPackagesSuspended()` 到点冻结目标 App。
+
+## 三步装好
+
+```bash
+bash build.sh        # 可选，仓库里已经带了 afs-guard.apk
+bash deploy.sh       # 自检 + 安装 + 设为设备所有者 + 验证
+```
+
+`deploy.sh` 会先查三个硬条件（**无账号、单用户、无已有 Owner**），
+不满足直接告诉你卡在哪、怎么解。装不上先看
+[COMPATIBILITY.md](COMPATIBILITY.md)——90% 是"应用分身"留下的第二个用户。
+
+拆掉只有一条路：
+
+```bash
+bash uninstall.sh
+```
+
+## 构建环境
+
+只要 JDK 17 + Android SDK 的 `build-tools` 和 `platforms/android-34`，**不需要 Gradle**。
+
+```bash
+export AFS_SDK=/path/to/android-sdk    # 或 ANDROID_HOME
+bash build.sh
+```
+
+脚本会自动找版本最高的 build-tools，Windows / macOS / Linux 都能编。
+
+---
 
 手机上唯一真正锁得住的方案：把 App 变成 **Device Owner（设备所有者）**，然后用
 `setPackagesSuspended()` 到点冻结抖音。
