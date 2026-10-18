@@ -35,6 +35,7 @@ public class MainActivity extends Activity {
     private TextView bigStatus;
     private TextView subStatus;
     private TextView accStatus;
+    private TextView shizukuStatus;
     private TextView targetsRow;
     private TextView windowRow;
     private Button accBtn;
@@ -55,6 +56,11 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
+
+        try {
+            rikka.shizuku.Shizuku.addRequestPermissionResultListener(permListener);
+        } catch (Throwable ignored) {
+        }
 
         ScrollView scroll = new ScrollView(this);
         scroll.setBackgroundColor(Color.parseColor("#f1f2f3"));
@@ -106,8 +112,14 @@ public class MainActivity extends Activity {
         accStatus = new TextView(this);
         accStatus.setTextSize(13);
         accStatus.setTextColor(Color.parseColor("#61666d"));
-        accStatus.setPadding(0, dp(4), 0, dp(12));
+        accStatus.setPadding(0, dp(4), 0, dp(8));
         accCard.addView(accStatus);
+
+        shizukuStatus = new TextView(this);
+        shizukuStatus.setTextSize(13);
+        shizukuStatus.setTextColor(Color.parseColor("#61666d"));
+        shizukuStatus.setPadding(0, 0, 0, dp(12));
+        accCard.addView(shizukuStatus);
 
         accBtn = new Button(this);
         accBtn.setText("打开无障碍设置");
@@ -202,6 +214,39 @@ public class MainActivity extends Activity {
     }
 
     @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        try {
+            rikka.shizuku.Shizuku.removeRequestPermissionResultListener(permListener);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static final int SHIZUKU_REQ = 100;
+
+    private final rikka.shizuku.Shizuku.OnRequestPermissionResultListener permListener =
+            new rikka.shizuku.Shizuku.OnRequestPermissionResultListener() {
+                @Override
+                public void onRequestPermissionResult(int requestCode, int grantResult) {
+                    refresh();
+                }
+            };
+
+    private void requestShizuku() {
+        try {
+            if (!rikka.shizuku.Shizuku.pingBinder()) {
+                return;
+            }
+            if (rikka.shizuku.Shizuku.checkSelfPermission()
+                    == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                return;
+            }
+            rikka.shizuku.Shizuku.requestPermission(SHIZUKU_REQ);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    @Override
     protected void onActivityResult(int req, int res, Intent data) {
         super.onActivityResult(req, res, data);
         refresh();
@@ -248,6 +293,24 @@ public class MainActivity extends Activity {
         accStatus.setText(isAccessibilityEnabled()
                 ? "已开启。关掉它，拦截立即失效。"
                 : "未开启。没有它，App 不会拦。");
+
+        try {
+            if (!rikka.shizuku.Shizuku.pingBinder()) {
+                shizukuStatus.setText("强化杀进程：Shizuku 未运行 —— 现在只能退到桌面，进程杀不掉");
+                shizukuStatus.setTextColor(Color.parseColor("#f85a54"));
+            } else if (rikka.shizuku.Shizuku.checkSelfPermission()
+                    == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                shizukuStatus.setText("强化杀进程：已接通 Shizuku，退到桌面后直接 force-stop");
+                shizukuStatus.setTextColor(Color.parseColor("#2ac864"));
+            } else {
+                shizukuStatus.setText("强化杀进程：等你在 Shizuku 弹窗里点「允许」");
+                shizukuStatus.setTextColor(Color.parseColor("#ff7f24"));
+                requestShizuku();
+            }
+        } catch (Throwable t) {
+            shizukuStatus.setText("强化杀进程：Shizuku 不可用");
+            shizukuStatus.setTextColor(Color.parseColor("#9499a0"));
+        }
 
         targetsRow.setText("已选 " + Store.targetCount(this) + " 个应用");
         windowRow.setText(Guard.windowText(s, e));

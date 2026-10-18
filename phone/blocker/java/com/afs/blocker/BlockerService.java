@@ -118,12 +118,70 @@ public class BlockerService extends AccessibilityService {
         handler.postDelayed(new Runnable() {
             @Override
             public void run() {
-                killBg(pkg);
+                killHard(pkg);
                 if (attempt == 0) {
                     scheduleKill(pkg, 1);
                 }
             }
         }, attempt == 0 ? 700L : 2500L);
+    }
+
+    /** 优先走 Shizuku 的 force-stop（真杀），失败才退回普通的后台清理。 */
+    private void killHard(final String pkg) {
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                if (forceStopViaShizuku(pkg)) {
+                    return;
+                }
+                killBg(pkg);
+            }
+        }, "afs-kill").start();
+    }
+
+    /**
+     * 通过 Shizuku 以 shell 身份执行 `am force-stop`。
+     * 这是唯一能真正干掉"上一个进程"槽位里那个 App 的办法 —— 普通 App 拿不到 FORCE_STOP_PACKAGES。
+     * 需要 Shizuku 正在运行，且本 App 在 Shizuku 里被授权过一次。
+     */
+    private boolean forceStopViaShizuku(String pkg) {
+        try {
+            if (!rikka.shizuku.Shizuku.pingBinder()) {
+                return false;
+            }
+            if (rikka.shizuku.Shizuku.checkSelfPermission()
+                    != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                Log.i(TAG, "shizuku: no permission");
+                return false;
+            }
+            rikka.shizuku.ShizukuRemoteProcess p = rikka.shizuku.Shizuku.newProcess(
+                    new String[] {"am", "force-stop", pkg}, null, null);
+            String out = drain(p.getInputStream());
+            String err = drain(p.getErrorStream());
+            int code = p.waitFor();
+            Log.i(TAG, "force-stop " + pkg + " exit=" + code
+                    + " out=[" + out + "] err=[" + err + "]");
+            return code == 0;
+        } catch (Throwable t) {
+            Log.w(TAG, "shizuku failed: " + t);
+            return false;
+        }
+    }
+
+    private String drain(java.io.InputStream in) {
+        try {
+            java.io.BufferedReader r = new java.io.BufferedReader(
+                    new java.io.InputStreamReader(in));
+            StringBuilder sb = new StringBuilder();
+            String line;
+            int lines = 0;
+            while ((line = r.readLine()) != null && lines++ < 8) {
+                sb.append(line).append(" | ");
+            }
+            return sb.toString();
+        } catch (Throwable t) {
+            return "?";
+        }
     }
 
     private void killBg(String pkg) {

@@ -90,7 +90,43 @@ bash test/run.sh
 - 强制模式关键断言：**放行时段里开强制 → 仍然拦**（否则等于没开）
 - `forceUntil == now` 视为已结束
 
-## 8. 还剩什么洞
+## 8. 强化杀进程（需要 Shizuku）
+
+只按 Home 等于把 App 挪到后台。实测在这台机器上：
+
+| 手段 | 结果 |
+|---|---|
+| `performGlobalAction(HOME)` | 有效，但进程留着、划回来就在原画面 |
+| `ActivityManager.killBackgroundProcesses` | **杀不掉抖音**——按 Home 后系统把它放进 `mPreviousProcess` 槽位，受保护 |
+| `am kill`（shell 也一样） | 同上，杀不掉 |
+| `am force-stop` | ✅ 进程立刻消失，冷启动 |
+
+`force-stop` 需要 `FORCE_STOP_PACKAGES`，普通 App 拿不到，只能借 Shizuku 的 shell 身份。
+所以 App 内置了 Shizuku API（`libs/shizuku-api.jar` + `shizuku-provider.jar`，v12.2.0，
+因为 v13 移除了 `newProcess`）：
+
+```
+退到桌面 700ms 后 → Shizuku.newProcess(["am","force-stop",pkg])
+                  → 失败则退回 killBackgroundProcesses
+```
+
+**开启条件：**
+1. 装 [Shizuku](https://shizuku.rikka.app/)，用无线调试或电脑启动它
+2. 打开「AFS 守卫」，首次会弹 Shizuku 授权框，点**允许**
+3. 两个 App 都要加电池白名单，否则 Shizuku 会报 `Request timeout`：
+   ```bash
+   adb shell dumpsys deviceidle whitelist +moe.shizuku.privileged.api
+   adb shell dumpsys deviceidle whitelist +com.afs.blocker
+   ```
+
+主页「无障碍服务」卡片会显示当前状态：
+- 绿：`已接通 Shizuku，退到桌面后直接 force-stop`
+- 红：`Shizuku 未运行` —— 只退桌面，不杀进程
+
+⚠️ **Shizuku 重启后失效**（非 root 模式必须重新连电脑启动一次）。
+它没在跑的时候，App 自动降级为"只退桌面"，不会报错也不会卡住。
+
+## 9. 还剩什么洞
 
 诚实列出来：
 
