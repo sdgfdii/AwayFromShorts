@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AFS 守卫</string>
+    <string name="acc_desc">屏蔽时段内把抖音踢回桌面。只在打开被管应用时读取窗口标题，不读取屏幕内容，不联网。</string>
+</resources>

@@ -5,18 +5,26 @@
 
 ---
 
-## 两条路，选一条
+## 三条路，选一条
 
-| | **A. Device Owner**（推荐，锁得死） | **B. Shizuku + Termux**（本文档，轻量） |
-|---|---|---|
-| 目录 | `dpc/` | 本目录（`guard.sh` 等） |
-| 到点能不能「延长 15 分钟」 | 不能 | 没这功能，但能被你自己强停 Shizuku 拆掉 |
-| 能不能卸载 | 不能（设置里变灰） | 能，30 秒搞定 |
-| 重启后 | 照常生效 | Shizuku 掉线，阻断失效 |
-| 代价 | 需要恢复出厂才能装，拆也要 adb | 装完即用 |
+| | **A. Device Owner** | **B. 无障碍版**（实机可用） | **C. Shizuku + Termux** |
+|---|---|---|---|
+| 目录 | `dpc/` | `blocker/` | 本目录（`guard.sh` 等） |
+| 拦法 | 系统级冻结，点不开 | 一进前台就送回桌面 | `pm disable-user` 禁用 |
+| 重启后 | 照常生效 | **自动恢复** | Shizuku 掉线，失效 |
+| 要不要电脑 | 设的时候要，之后不要 | **完全不要** | 每次重启都要 |
+| 代价 | 设备必须无账号 + 无 clone profile | 能被用户在设置里关掉 | 装完即用 |
 
-**想要「我自己也绕不过去」就走 A** → 看 [`dpc/README.md`](dpc/README.md)。
-下面全是 B。
+**PLR110 实测：A 装不上**（ColorOS 应用分身残留的 `profile.CLONE` 用户，`pm remove-user` 删不掉，只能恢复出厂）。
+**所以用 B** → 看 [`blocker/README.md`](blocker/README.md)。
+
+下面 C 的部分保留，作为没有电脑时不可用的备选。
+
+---
+
+## C. Shizuku + Termux
+
+需要 Shizuku 在跑 + 把 `rish` 放进 Termux 的 `$HOME`。**每次重启都要连电脑重跑一次 starter**，所以只当备用。
 
 ---
 
