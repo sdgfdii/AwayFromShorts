@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">AFS 守卫</string>
+    <string name="pick_title">选择要冻结的应用</string>
 </resources>

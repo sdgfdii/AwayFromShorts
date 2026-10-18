@@ -1,6 +1,7 @@
 package com.afs.guard;
 
 import android.app.Activity;
+import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.os.Bundle;
@@ -27,8 +28,11 @@ public class MainActivity extends Activity {
     private static final int BRAND = 0xFF00AEEC;
     private static final int RED = 0xFFF85A54;
 
+    private static final int REQ_PICK = 21;
+
     private TextView status;
     private TextView result;
+    private Button pickBtn;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -61,6 +65,13 @@ public class MainActivity extends Activity {
         status = card(root);
         result = card(root);
         result.setTextColor(TEXT2);
+
+        pickBtn = button(root, "选择应用", SURFACE, TEXT);
+        pickBtn.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                startActivityForResult(new Intent(MainActivity.this, AppPickerActivity.class), REQ_PICK);
+            }
+        });
 
         Button applyBtn = button(root, "立即应用", BRAND, 0xFFFFFFFF);
         applyBtn.setOnClickListener(new View.OnClickListener() {
@@ -109,7 +120,24 @@ public class MainActivity extends Activity {
         }).start();
     }
 
+    @Override
+    protected void onActivityResult(int req, int res, Intent data) {
+        super.onActivityResult(req, res, data);
+        if (req == REQ_PICK) {
+            runApply();   // 改完列表立刻重新冻结/解冻，否则要等下一次闹钟
+        }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        render();
+    }
+
     private void render() {
+        if (pickBtn != null) {
+            pickBtn.setText("选择应用（已选 " + Targets.count(this) + " 个）");
+        }
         status.setText(Guard.describe(this));
         if (result.getText().length() == 0) {
             result.setText("尚未执行。点上面「立即应用」。");

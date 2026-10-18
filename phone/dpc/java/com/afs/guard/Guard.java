@@ -31,8 +31,8 @@ public final class Guard {
     public static final int ALLOW_END_H   = 23;
     public static final int ALLOW_END_M   = 0;
 
-    /** 管哪些包 —— 抖音三件套，漏一个等于没管 */
-    public static final String[] TARGETS = new String[] {
+    /** 默认管哪些包 —— 用户没在「选择应用」里改过就用这个 */
+    public static final String[] DEFAULT_TARGETS = new String[] {
             "com.ss.android.ugc.aweme",       // 抖音
             "com.ss.android.ugc.aweme.lite",  // 抖音极速版
             "com.ss.android.ugc.live"         // 抖音火山版
@@ -165,8 +165,20 @@ public final class Guard {
         sb.append("模式：").append(allow ? "放行" : "屏蔽").append('\n');
 
         PackageManager pm = ctx.getPackageManager();
-        for (int i = 0; i < TARGETS.length; i++) {
-            String p = TARGETS[i];
+        java.util.Set<String> now = Targets.packages(ctx);
+        java.util.Set<String> prev = Targets.applied(ctx);
+        // 被移出列表的必须先解冻，否则它会永远停在被冻结的状态
+        for (String p : prev) {
+            if (!now.contains(p)) {
+                try {
+                    d.setPackagesSuspended(a, new String[] { p }, false);
+                    d.setUninstallBlocked(a, p, false);
+                    sb.append("- ").append(p).append("：已移出列表，解冻\n");
+                } catch (Throwable ignored) {
+                }
+            }
+        }
+        for (String p : now) {
             if (!installed(pm, p)) {
                 sb.append("- ").append(p).append("：未安装，跳过\n");
                 continue;
@@ -184,6 +196,7 @@ public final class Guard {
             }
             sb.append("- ").append(p).append("：").append(state).append('\n');
         }
+        Targets.setApplied(ctx, now);
 
         if (ALSO_SUSPEND_BROWSERS && !allow) {
             for (int i = 0; i < BROWSERS.length; i++) {
