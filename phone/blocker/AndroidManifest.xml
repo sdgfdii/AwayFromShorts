@@ -5,6 +5,9 @@
     <!-- 需要枚举已安装的可启动应用，让用户勾选 -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
 
+    <!-- 按 Home 只是退到后台（音频还在放），真正的杀进程要用这个 -->
+    <uses-permission android:name="android.permission.KILL_BACKGROUND_PROCESSES" />
+
     <queries>
         <intent>
             <action android:name="android.intent.action.MAIN" />

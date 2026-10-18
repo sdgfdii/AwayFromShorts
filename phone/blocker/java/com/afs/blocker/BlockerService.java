@@ -97,6 +97,9 @@ public class BlockerService extends AccessibilityService {
         if (ok) {
             lastPkg = null;
         }
+        // 只按 Home 等于把 App 挪到后台，音频还在响。等它真的退到后台再杀进程。
+        // killBackgroundProcesses 杀不掉前台进程，所以必须先 HOME 再延迟一下。
+        scheduleKill(pkg, 0);
         Log.i(TAG, "kicked " + pkg + " (#" + kickCount + ")");
         if (now - lastToastAt > 10000L) {
             lastToastAt = now;
@@ -107,6 +110,32 @@ public class BlockerService extends AccessibilityService {
                         Toast.LENGTH_SHORT).show();
             } catch (Throwable ignored) {
             }
+        }
+    }
+
+    /** 两次尝试：一次 700ms 后（刚退到后台），一次 2.5s 后（防它自己又拉起来）。 */
+    private void scheduleKill(final String pkg, final int attempt) {
+        handler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                killBg(pkg);
+                if (attempt == 0) {
+                    scheduleKill(pkg, 1);
+                }
+            }
+        }, attempt == 0 ? 700L : 2500L);
+    }
+
+    private void killBg(String pkg) {
+        try {
+            android.app.ActivityManager am =
+                    (android.app.ActivityManager) getSystemService(ACTIVITY_SERVICE);
+            if (am != null) {
+                am.killBackgroundProcesses(pkg);
+                Log.i(TAG, "killBackgroundProcesses " + pkg);
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "kill failed: " + t);
         }
     }
 
