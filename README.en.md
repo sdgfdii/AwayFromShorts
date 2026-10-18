@@ -2,7 +2,10 @@
 
 > A self-control tool for short-video addiction. Blocks at the OS level, not with a timer you can dismiss.
 
-[中文说明](README.md) · [Releases](https://github.com/sdgfdii/AwayFromShorts/releases)
+[![Release](https://img.shields.io/github/v/release/sdgfdii/AwayFromShorts?label=release)](https://github.com/sdgfdii/AwayFromShorts/releases/latest)
+[![License](https://img.shields.io/github/license/sdgfdii/AwayFromShorts)](LICENSE)
+
+[中文说明](README.md) · [Download APK](https://github.com/sdgfdii/AwayFromShorts/releases/latest)
 
 ---
 

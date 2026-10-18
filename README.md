@@ -2,6 +2,9 @@
 
 > 远离短视频成瘾 —— 在指定时间屏蔽网站和程序,并提供一个可视化网页随时调整规则。
 
+[![Release](https://img.shields.io/github/v/release/sdgfdii/AwayFromShorts?label=release)](https://github.com/sdgfdii/AwayFromShorts/releases/latest)
+[![License](https://img.shields.io/github/license/sdgfdii/AwayFromShorts)](LICENSE)
+
 **English:** [README.en.md](README.en.md)
 
 按你的周计划,**自动屏蔽短视频网站(hosts 层)** 和**强制关闭指定程序(进程层)**,支持白名单、临时屏蔽/解除、一键安装、一键卸载,全部通过本地可视化网页配置。
@@ -41,6 +44,8 @@ App 本身，只能在系统层面把 App 冻住。
 <img src="docs/screenshots/02-picker.png" width="240" alt="选择应用">
 
 屏蔽时段整页变黑、所有控件禁用；放行时段切回浅色可编辑。
+
+不想自己编，直接下 APK：[Releases](https://github.com/sdgfdii/AwayFromShorts/releases/latest)
 
 一条命令部署（连上手机、开 USB 调试即可）：
 
