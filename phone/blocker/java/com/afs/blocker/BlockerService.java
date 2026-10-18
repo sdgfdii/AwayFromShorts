@@ -23,6 +23,9 @@ public class BlockerService extends AccessibilityService {
 
     private static final String TAG = "AfsBlocker";
 
+    /** 后台复活巡检间隔（毫秒） */
+    private static final long REAP_MS = 15000L;
+
     private final Handler handler = new Handler(Looper.getMainLooper());
 
     /** 最近一次切到前台的包名（只信这个，不读屏幕内容） */
@@ -41,6 +44,19 @@ public class BlockerService extends AccessibilityService {
         }
     };
 
+    /**
+     * 抖音被 force-stop 之后会自己把进程拉回来（实测约 30 秒一轮）。
+     * 这个巡检就是拿 shell 身份反复扫：只要目标包还有进程，就再 force-stop 一次。
+     * 只在拦截状态下跑，放行时段完全不动作。
+     */
+    private final Runnable reap = new Runnable() {
+        @Override
+        public void run() {
+            reapOnce();
+            handler.postDelayed(this, REAP_MS);
+        }
+    };
+
     @Override
     protected void onServiceConnected() {
         super.onServiceConnected();
@@ -54,6 +70,8 @@ public class BlockerService extends AccessibilityService {
                 + " targets=" + Store.targetCount(this));
         handler.removeCallbacks(tick);
         handler.post(tick);
+        handler.removeCallbacks(reap);
+        handler.postDelayed(reap, REAP_MS);
     }
 
     @Override
@@ -190,6 +208,52 @@ public class BlockerService extends AccessibilityService {
         }
     }
 
+    /** 扫一遍：目标包若有进程就 force-stop。只在拦截状态下动。 */
+    private void reapOnce() {
+        try {
+            long now = System.currentTimeMillis();
+            int mod = Guard.minuteOfDay(Calendar.getInstance());
+            if (!Guard.isBlocked(mod, now, Store.forceUntil(this),
+                    Store.startMin(this), Store.endMin(this))) {
+                return;
+            }
+            final java.util.Set<String> targets = Store.targets(this);
+            if (targets.isEmpty()) {
+                return;
+            }
+            final StringBuilder cmd = new StringBuilder();
+            for (String p : targets) {
+                cmd.append("if pidof ").append(p).append(" >/dev/null 2>&1; then am force-stop ")
+                        .append(p).append("; echo K:").append(p).append("; fi; ");
+            }
+            new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        ShizukuBridge.ensureBinder(BlockerService.this);
+                        if (!rikka.shizuku.Shizuku.pingBinder()) {
+                            return;
+                        }
+                        if (rikka.shizuku.Shizuku.checkSelfPermission()
+                                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                            return;
+                        }
+                        rikka.shizuku.ShizukuRemoteProcess rp = rikka.shizuku.Shizuku.newProcess(
+                                new String[] {"/system/bin/sh", "-c", cmd.toString()}, null, null);
+                        String out = drain(rp.getInputStream());
+                        rp.waitFor();
+                        if (out.contains("K:")) {
+                            Log.i(TAG, "reaped " + out);
+                        }
+                    } catch (Throwable t) {
+                        Log.w(TAG, "reap failed: " + t);
+                    }
+                }
+            }, "afs-reap").start();
+        } catch (Throwable ignored) {
+        }
+    }
+
     private void killBg(String pkg) {
         try {
             android.app.ActivityManager am =
@@ -211,6 +275,7 @@ public class BlockerService extends AccessibilityService {
     @Override
     public boolean onUnbind(android.content.Intent intent) {
         handler.removeCallbacks(tick);
+        handler.removeCallbacks(reap);
         return super.onUnbind(intent);
     }
 }
