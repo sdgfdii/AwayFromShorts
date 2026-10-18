@@ -5,7 +5,6 @@ import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 import android.view.accessibility.AccessibilityEvent;
-import android.widget.Toast;
 
 import java.util.Calendar;
 import java.util.Set;
@@ -32,7 +31,6 @@ public class BlockerService extends AccessibilityService {
     private String lastPkg;
 
     private long lastKickAt;
-    private long lastToastAt;
     private int kickCount;
 
     private final Runnable tick = new Runnable() {
@@ -125,16 +123,6 @@ public class BlockerService extends AccessibilityService {
         // killBackgroundProcesses 杀不掉前台进程，所以必须先 HOME 再延迟一下。
         scheduleKill(pkg, 0);
         Log.i(TAG, "kicked " + pkg + " (#" + kickCount + ")");
-        if (now - lastToastAt > 10000L) {
-            lastToastAt = now;
-            try {
-                String why = Store.forceActive(this) ? "强制模式" : "屏蔽时段";
-                Toast.makeText(this, why + "：现在不能刷（放行 "
-                                + Guard.windowText(Store.startMin(this), Store.endMin(this)) + "）",
-                        Toast.LENGTH_SHORT).show();
-            } catch (Throwable ignored) {
-            }
-        }
     }
 
     /** 两次尝试：一次 700ms 后（刚退到后台），一次 2.5s 后（防它自己又拉起来）。 */
