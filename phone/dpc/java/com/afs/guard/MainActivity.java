@@ -70,7 +70,7 @@ public class MainActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         TextView title = new TextView(this);
-        title.setText("AFS 守卫");
+        title.setText("AwayFromShorts");
         title.setTextColor(TEXT);
         title.setTextSize(23);
         title.setTypeface(Typeface.DEFAULT_BOLD);
