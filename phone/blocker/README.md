@@ -152,7 +152,30 @@ force-stop com.ss.android.ugc.aweme exit=0 out=[] err=[]
 ⚠️ **Shizuku 重启后失效**（非 root 模式必须重新连电脑启动一次）。
 它没在跑的时候，App 自动降级为"只退桌面"，不报错也不会卡住。
 
-## 9. 还剩什么洞
+## 9. 自愈（系统把开关清掉后自动写回）
+
+ColorOS 会不定时把无障碍开关清成 `null` / `0`（侧载 App 的"受限设置"策略），
+表现就是"突然不拦了"。普通 App 没权限改，但 **Shizuku 是 shell 身份，有 WRITE_SECURE_SETTINGS**。
+
+`Heal.java` 每 **2 分钟**查一次，发现服务没登记就写回去：
+
+```sh
+appops set com.afs.blocker ACCESS_RESTRICTED_SETTINGS allow
+settings put secure enabled_accessibility_services com.afs.blocker/com.afs.blocker.BlockerService
+settings put secure accessibility_enabled 1
+```
+
+调度用 `AlarmManager.setInexactRepeating`（60s 起，实际按系统对齐），
+`HealReceiver` 每次被唤醒都重新挂下一次，并监听 `BOOT_COMPLETED` 重启链路。
+
+实测：手动把 `enabled_accessibility_services` 删掉、`accessibility_enabled=0`，
+144 秒后自动恢复（日志 `heal ran, now=true`）。
+
+⚠️ **自愈也依赖 Shizuku**。Shizuku 不在时它什么也做不了，
+所以"重启后"这个洞自愈补不上，只能靠连电脑启动 Shizuku。
+⚠️ 你手动关掉无障碍，两分钟内会被它自己打开 —— 这是设计如此。
+
+## 10. 还剩什么洞
 
 诚实列出来：
 

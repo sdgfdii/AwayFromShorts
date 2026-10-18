@@ -57,6 +57,7 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle b) {
         super.onCreate(b);
 
+        Heal.schedule(this);
         try {
             rikka.shizuku.Shizuku.addRequestPermissionResultListener(permListener);
             // 不主动要一次 binder，pingBinder() 永远是 false（Shizuku 只会推给正在跑的进程）

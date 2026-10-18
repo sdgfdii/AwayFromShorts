@@ -11,6 +11,9 @@
     <!-- Shizuku v11/v12 通过这个自定义权限识别"使用 API 的应用"；缺了它 binder 根本不会下发 -->
     <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
 
+    <!-- 开机把自愈巡检链重新挂上 -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
     <queries>
         <intent>
             <action android:name="android.intent.action.MAIN" />
@@ -50,6 +53,16 @@
             android:exported="true"
             android:multiprocess="false"
             android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
+
+        <!-- 自愈：系统把无障碍开关清掉就写回去 -->
+        <receiver
+            android:name=".HealReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="com.afs.blocker.HEAL" />
+            </intent-filter>
+        </receiver>
 
         <!-- 无障碍服务：靠系统绑定，开机自动恢复，不需要电脑、不需要 Shizuku -->
         <service

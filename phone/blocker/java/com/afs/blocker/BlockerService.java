@@ -72,6 +72,7 @@ public class BlockerService extends AccessibilityService {
         handler.post(tick);
         handler.removeCallbacks(reap);
         handler.postDelayed(reap, REAP_MS);
+        Heal.schedule(this);
     }
 
     @Override
