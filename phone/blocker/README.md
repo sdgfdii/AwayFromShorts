@@ -110,21 +110,47 @@ bash test/run.sh
                   → 失败则退回 killBackgroundProcesses
 ```
 
-**开启条件：**
-1. 装 [Shizuku](https://shizuku.rikka.app/)，用无线调试或电脑启动它
-2. 打开「AFS 守卫」，首次会弹 Shizuku 授权框，点**允许**
-3. 两个 App 都要加电池白名单，否则 Shizuku 会报 `Request timeout`：
+**开启条件（实测跑通过的全部条件，少一条都不行）：**
+
+1. **Shizuku 必须用 12.x**（[v12.14.0](https://github.com/RikkaApps/Shizuku/releases/tag/v12.14.0)）。
+   v13 移除了 `newProcess`，API 13 的 jar 里根本没有这个方法。
+2. 启动 Shizuku（非 root 走 adb）：
+   ```bash
+   adb shell sh /sdcard/Android/data/moe.shizuku.privileged.api/start.sh
+   ```
+3. 给本 App 授自定义权限（**dangerous 级，必须运行时授予**）：
+   ```bash
+   adb shell pm grant com.afs.blocker moe.shizuku.manager.permission.API_V23
+   ```
+4. 两个 App 都要加电池白名单，否则 Shizuku 报 `Request timeout`：
    ```bash
    adb shell dumpsys deviceidle whitelist +moe.shizuku.privileged.api
    adb shell dumpsys deviceidle whitelist +com.afs.blocker
    ```
 
-主页「无障碍服务」卡片会显示当前状态：
+**binder 是手动注入的**（`ShizukuBridge.java`）。官方的
+`requestBinderForNonProviderProcess()` 在这台机器上不生效，`pingBinder()` 恒为 false。
+改成直接调自己的 Provider 拿 `IBinder`，再喂给 `Shizuku.onBinderReceived()`：
+
+```java
+Bundle b = getContentResolver().call(
+        Uri.parse("content://com.afs.blocker.shizuku"),
+        ShizukuProvider.METHOD_GET_BINDER, null, null);
+Shizuku.onBinderReceived(b.getBinder(ShizukuProvider.METHOD_SEND_BINDER), getPackageName());
+```
+
+主页「无障碍服务」卡片显示当前状态：
 - 绿：`已接通 Shizuku，退到桌面后直接 force-stop`
 - 红：`Shizuku 未运行` —— 只退桌面，不杀进程
 
+实测日志：
+```
+kicked com.ss.android.ugc.aweme (#1)
+force-stop com.ss.android.ugc.aweme exit=0 out=[] err=[]
+```
+
 ⚠️ **Shizuku 重启后失效**（非 root 模式必须重新连电脑启动一次）。
-它没在跑的时候，App 自动降级为"只退桌面"，不会报错也不会卡住。
+它没在跑的时候，App 自动降级为"只退桌面"，不报错也不会卡住。
 
 ## 9. 还剩什么洞
 

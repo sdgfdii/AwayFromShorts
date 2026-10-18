@@ -59,6 +59,8 @@ public class MainActivity extends Activity {
 
         try {
             rikka.shizuku.Shizuku.addRequestPermissionResultListener(permListener);
+            // 不主动要一次 binder，pingBinder() 永远是 false（Shizuku 只会推给正在跑的进程）
+            ShizukuBridge.ensureBinder(this);
         } catch (Throwable ignored) {
         }
 
@@ -234,6 +236,7 @@ public class MainActivity extends Activity {
 
     private void requestShizuku() {
         try {
+            ShizukuBridge.ensureBinder(this);
             if (!rikka.shizuku.Shizuku.pingBinder()) {
                 return;
             }

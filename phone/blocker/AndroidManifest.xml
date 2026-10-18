@@ -8,6 +8,9 @@
     <!-- 按 Home 只是退到后台（音频还在放），真正的杀进程要用这个 -->
     <uses-permission android:name="android.permission.KILL_BACKGROUND_PROCESSES" />
 
+    <!-- Shizuku v11/v12 通过这个自定义权限识别"使用 API 的应用"；缺了它 binder 根本不会下发 -->
+    <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
+
     <queries>
         <intent>
             <action android:name="android.intent.action.MAIN" />

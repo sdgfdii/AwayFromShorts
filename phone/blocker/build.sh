@@ -50,9 +50,8 @@ echo "[2/6] aapt2 link"
 
 # ---------- 3. 编译 Java ----------
 echo "[3/6] javac"
-LIB_API="libs/shizuku-api.jar"
-LIB_PROVIDER="libs/shizuku-provider.jar"
-CP="$ANDROID_JAR;$LIB_API;$LIB_PROVIDER"
+LIBS="$(ls libs/*.jar | tr '\n' ';' | sed 's/;$//')"
+CP="$ANDROID_JAR;$LIBS"
 find java "$OUT/gen" -name '*.java' > "$OUT/sources.txt"
 javac -encoding UTF-8 -nowarn -source 8 -target 8 \
   -bootclasspath "$ANDROID_JAR" -classpath "$CP" \
@@ -62,7 +61,7 @@ javac -encoding UTF-8 -nowarn -source 8 -target 8 \
 echo "[4/6] d8"
 "$JAR" cf "$OUT/classes.jar" -C "$OUT/classes" .
 "$BT/d8.bat" --lib "$ANDROID_JAR" --min-api 24 --output "$OUT/dex" \
-  "$OUT/classes.jar" "$LIB_API" "$LIB_PROVIDER"
+  "$OUT/classes.jar" libs/*.jar
 
 # ---------- 5. 打包 + 对齐 ----------
 echo "[5/6] zip + zipalign"

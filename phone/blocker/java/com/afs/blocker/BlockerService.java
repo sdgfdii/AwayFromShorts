@@ -44,6 +44,11 @@ public class BlockerService extends AccessibilityService {
     @Override
     protected void onServiceConnected() {
         super.onServiceConnected();
+        try {
+            // 服务先起来时也要主动要 binder，否则 force-stop 永远走不通
+            ShizukuBridge.ensureBinder(this);
+        } catch (Throwable ignored) {
+        }
         Log.i(TAG, "service connected, window="
                 + Guard.windowText(Store.startMin(this), Store.endMin(this))
                 + " targets=" + Store.targetCount(this));
@@ -146,6 +151,7 @@ public class BlockerService extends AccessibilityService {
      */
     private boolean forceStopViaShizuku(String pkg) {
         try {
+            ShizukuBridge.ensureBinder(this);
             if (!rikka.shizuku.Shizuku.pingBinder()) {
                 return false;
             }
