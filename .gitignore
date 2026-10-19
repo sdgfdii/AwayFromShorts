@@ -21,3 +21,5 @@ Thumbs.db
 phone/dpc/build/
 *.idsig
 phone/blocker/build/
+phone/preview.apk
+phone/demo.apk
