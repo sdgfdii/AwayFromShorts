@@ -101,6 +101,11 @@ public class AppListActivity extends Activity {
         addBtn.setBackgroundColor(SURFACE);
         addBtn.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
+                // 按钮本来就该是灰的，这里再挡一道
+                if (!canAdd()) {
+                    toast("全部应用都在屏蔽中，等某一应用进入自己的放行时段再加");
+                    return;
+                }
                 startActivityForResult(new Intent(AppListActivity.this, AppPickerActivity.class), REQ_PICK);
             }
         });
@@ -171,6 +176,27 @@ public class AppListActivity extends Activity {
         for (Map.Entry<String, Rule> e : all.entrySet()) {
             list.addView(makeRow(e.getKey(), e.getValue()));
         }
+
+        boolean can = canAdd();
+        addBtn.setEnabled(can);
+        addBtn.setTextColor(can ? BRAND : 0xFF9A9AA0);
+        addBtn.setBackgroundColor(can ? SURFACE : LINE);
+        addBtn.setAlpha(can ? 1f : 0.55f);
+        hint.setText(can
+                ? "点一行改它的放行时段，长按从白名单移除。"
+                : "全部应用都在屏蔽中：白名单现在改不了，等某一应用进入自己的放行时段。");
+    }
+
+    /**
+     * 能不能改白名单（加应用）。
+     *
+     * 全部应用都在屏蔽中时不给加 —— 跟"这一页现在改不了"保持一致，
+     * 否则界面上写着锁着、下面却有个能点的按钮，很荒唐。
+     *
+     * 唯一例外：白名单是空的。空列表里没有任何窗口，不给加就永远加不回来（直接死锁）。
+     */
+    private boolean canAdd() {
+        return Config.inGrace(this) || Guard.anyUnlocked(this) || RuleStore.count(this) == 0;
     }
 
     private View makeRow(final String pkg, Rule rule) {
