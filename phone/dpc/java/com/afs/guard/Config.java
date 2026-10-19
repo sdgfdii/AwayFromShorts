@@ -4,14 +4,14 @@ import android.content.Context;
 import android.content.SharedPreferences;
 
 /**
- * 跟具体应用无关的全局配置：强制模式、首次宽限。
+ * 全局配置只剩"首次宽限"。
  *
- * 每个应用自己的时段在 {@link RuleStore} 里，别放这儿。
+ * 每个应用自己的时段在 {@link RuleStore} 里。没有强制模式——
+ * 到点自动冻结、到点自动放行，全是时间表说了算，没有任何要人手动管的开关。
  */
 public final class Config {
 
     private static final String FILE = "afs_guard";
-    private static final String K_FORCE = "force_on";
     private static final String K_FIRST_SEEN = "first_seen";
     private static final String K_ARMED = "armed";
 
@@ -20,22 +20,6 @@ public final class Config {
 
     private static SharedPreferences sp(Context c) {
         return c.getSharedPreferences(FILE, Context.MODE_PRIVATE);
-    }
-
-    /* ---------- 强制模式 ---------- */
-
-    /**
-     * 强制模式开关。没有持续时间 —— 开了就一直强制，直到在放行时段自己关掉。
-     *
-     * 为什么不做"关多久"：需求是"屏蔽时段内无法关闭"，
-     * 如果带时间就会变成"到点自动解除"，那是两回事。
-     */
-    public static boolean forceOn(Context c) {
-        return sp(c).getBoolean(K_FORCE, false);
-    }
-
-    public static void setForce(Context c, boolean on) {
-        sp(c).edit().putBoolean(K_FORCE, on).apply();
     }
 
     /* ---------- 首次宽限 ---------- */

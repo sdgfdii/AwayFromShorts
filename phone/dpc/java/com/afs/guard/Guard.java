@@ -85,11 +85,11 @@ public final class Guard {
     /* ==================== 判定（按应用） ==================== */
 
     /**
-     * 纯判定：强制开着就屏蔽，否则看这个应用自己的窗口。
+     * 纯判定：现在是否该冻结 = 不在自己的放行窗口里。
      * 不碰 Context —— 离线回归直接调它。
      */
-    public static boolean blocked(Rule r, Calendar c, boolean force) {
-        return force || !r.inWindow(c);
+    public static boolean blocked(Rule r, Calendar c) {
+        return !r.inWindow(c);
     }
 
     /**
@@ -112,7 +112,7 @@ public final class Guard {
      * 强制模式开着 → 全部冻结；否则看它自己的窗口。
      */
     public static boolean blockedNow(Context ctx, String pkg) {
-        return blocked(RuleStore.get(ctx, pkg), Calendar.getInstance(), Config.forceOn(ctx));
+        return blocked(RuleStore.get(ctx, pkg), Calendar.getInstance());
     }
 
     /** 这个应用现在是否在自己的放行窗口里（不看强制模式）。 */
@@ -164,10 +164,9 @@ public final class Guard {
 
     public static int blockedCount(Context ctx) {
         Calendar now = Calendar.getInstance();
-        boolean force = Config.forceOn(ctx);
         int n = 0;
         for (Rule r : RuleStore.all(ctx).values()) {
-            if (blocked(r, now, force)) {
+            if (blocked(r, now)) {
                 n++;
             }
         }
@@ -204,10 +203,9 @@ public final class Guard {
 
         Map<String, Rule> rules = RuleStore.all(ctx);
         Calendar now = Calendar.getInstance();
-        boolean force = Config.forceOn(ctx);
         boolean anyBlocked = false;
         for (Rule r : rules.values()) {
-            if (blocked(r, now, force)) {
+            if (blocked(r, now)) {
                 anyBlocked = true;
                 break;
             }
@@ -235,7 +233,7 @@ public final class Guard {
                 sb.append("- ").append(pkg).append("：未安装\n");
                 continue;
             }
-            boolean block = blocked(r, now, force);
+            boolean block = blocked(r, now);
             try {
                 d.setUninstallBlocked(a, pkg, true);
             } catch (Throwable ignored) {
@@ -275,8 +273,7 @@ public final class Guard {
         // 而 schedule() 原本只在开机/闹钟/Job 回调里调用 —— 装完就再也排不上了。
         schedule(ctx);
 
-        String head = "结果：" + rules.size() + " 个应用，"
-                + frozen + " 个冻结" + (force ? "（强制模式）" : "") + "\n";
+        String head = "结果：" + rules.size() + " 个应用，" + frozen + " 个冻结\n";
         return head + sb.toString();
     }
 
@@ -389,12 +386,10 @@ public final class Guard {
         Calendar now = Calendar.getInstance();
         int total = RuleStore.count(ctx);
         int frozen = blockedCount(ctx);
-        boolean force = Config.forceOn(ctx);
 
         StringBuilder sb = new StringBuilder();
         sb.append("设备所有者　").append(isOwner(ctx) ? "是（已锁死）" : "否 —— 冻结不会生效").append('\n');
         sb.append("当前时间　").append(stamp(now.getTimeInMillis())).append('\n');
-        sb.append("强制模式　").append(force ? "已开启（放行时段才能关）" : "未开启").append('\n');
         sb.append("应用　　　").append(total).append(" 个，").append(frozen).append(" 个冻结中").append('\n');
         sb.append("下次切换　").append(total == 0 ? "—（没添加应用）" : stamp(nextFlipMillis(ctx))).append('\n');
         sb.append('\n');

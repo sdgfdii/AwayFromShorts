@@ -8,6 +8,7 @@ import java.util.Calendar;
  *
  * 判定已经完全参数化：每个应用一个 {@link Rule}（星期掩码 + 起止分钟），
  * 一个进程里就能把多套规则、多个应用一起跑，不用 sed 改常量重编第二份。
+ * 没有强制模式：冻结与否完全由时间表决定，到点自动换挡。
  */
 public final class GuardTest {
 
@@ -19,7 +20,6 @@ public final class GuardTest {
         crossMidnight();
         onlyMonday();
         weekendOnly();
-        forceTests();
         multiApp();
         textTests();
 
@@ -108,23 +108,6 @@ public final class GuardTest {
         eq(blocked(r, 2026, 10, 23, 22, 30), true, "周五 22:30 屏蔽");
     }
 
-    /* ---------- 5. 强制模式 ---------- */
-
-    private static void forceTests() {
-        System.out.println("---- 强制模式（开关式，无持续时间）----");
-        Rule r = new Rule(0x7F, 22 * 60, 23 * 60);
-        Calendar inWin = at(2026, 10, 19, 22, 30);
-        Calendar outWin = at(2026, 10, 19, 12, 0);
-
-        eq(Guard.blocked(r, inWin, true), true, "★ 放行时段 + 强制 → 仍然屏蔽");
-        eq(Guard.blocked(r, outWin, true), true, "屏蔽时段 + 强制 → 屏蔽");
-        eq(Guard.blocked(r, inWin, false), false, "放行时段 + 未强制 → 放行");
-        eq(Guard.blocked(r, outWin, false), true, "屏蔽时段 + 未强制 → 屏蔽");
-
-        // 锁定只看窗口：强制开着时，放行窗口里仍要能把它关掉，否则永远出不来
-        ok(r.inWindow(inWin), "锁定判定看窗口：强制中但处在放行窗口 → 不锁（否则关不掉）");
-    }
-
     /* ---------- 6. 多个应用互不影响 ---------- */
 
     private static void multiApp() {
@@ -193,7 +176,7 @@ public final class GuardTest {
     }
 
     private static boolean blocked(Rule r, int y, int mo, int d, int hh, int mm) {
-        return Guard.blocked(r, at(y, mo, d, hh, mm), false);
+        return Guard.blocked(r, at(y, mo, d, hh, mm));
     }
 
     private static Calendar noon() {

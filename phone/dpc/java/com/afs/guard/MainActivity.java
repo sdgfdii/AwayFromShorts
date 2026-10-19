@@ -49,7 +49,6 @@ public class MainActivity extends Activity {
     private TextView result;
     private TextView foot;
     private Button appsBtn;
-    private Button forceBtn;
     private Button applyBtn;
 
     private final java.util.List<View> surfaces = new java.util.ArrayList<>();
@@ -102,16 +101,6 @@ public class MainActivity extends Activity {
             }
         });
 
-        forceBtn = button(root, "开启强制模式", RED, 0xFFFFFFFF);
-        forceBtn.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) {
-                boolean on = Config.forceOn(MainActivity.this);
-                Config.setForce(MainActivity.this, !on);
-                toast(on ? "强制模式已关闭" : "强制模式已开启：所有应用一律冻结");
-                runApply();
-            }
-        });
-
         applyBtn = button(root, "立即应用", BRAND, 0xFFFFFFFF);
         applyBtn.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
@@ -155,7 +144,6 @@ public class MainActivity extends Activity {
         boolean owner = Guard.isOwner(this);
         boolean dark = Guard.allBlocked(this);
         boolean grace = Config.inGrace(this);
-        boolean forceOn = Config.forceOn(this);
         int total = RuleStore.count(this);
 
         applyDark(dark);
@@ -192,15 +180,6 @@ public class MainActivity extends Activity {
         appsBtn.setText("黑名单 · " + total + " 个应用");
         styleSecondary(appsBtn, false);
         styleSecondary(applyBtn, false);
-
-        boolean canForce = Guard.anyUnlocked(this) || grace || !forceOn;
-        int offBg = dark ? OFF_DARK : OFF_LIGHT;
-        int offFg = dark ? 0xFF6E6E76 : 0xFF9A9AA0;
-        forceBtn.setEnabled(canForce);
-        forceBtn.setText(forceOn ? "关闭强制模式（当前：强制中）" : "开启强制模式");
-        forceBtn.setTextColor(canForce ? 0xFFFFFFFF : offFg);
-        forceBtn.setBackgroundColor(canForce ? (forceOn ? 0xFFB0352F : RED) : offBg);
-        forceBtn.setAlpha(canForce ? 1f : 0.55f);
 
         result.setTextColor(dark ? TEXT2_DARK : TEXT2);
         if (result.getText().length() == 0) {
