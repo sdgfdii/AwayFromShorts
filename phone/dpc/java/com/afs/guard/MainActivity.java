@@ -18,9 +18,9 @@ import android.widget.Toast;
 /**
  * 主界面：只看状态，不进列表。
  *
- * 应用一多，把每个应用都铺在首页就得一直往下滑 —— 那本来是个"白名单"，
+ * 应用一多，把每个应用都铺在首页就得一直往下滑 —— 那本来是个"黑名单"，
  * 平时不需要看。所以这里只留状态、强制模式和两个动作，
- * 白名单和每条时段都在 {@link AppListActivity} 里，一行一个。
+ * 黑名单和每条时段都在 {@link AppListActivity} 里，一行一个。
  */
 public class MainActivity extends Activity {
 
@@ -95,7 +95,7 @@ public class MainActivity extends Activity {
         lockNote = card(root, 12);
         lockNote.setTextColor(RED);
 
-        appsBtn = button(root, "白名单", SURFACE, TEXT);
+        appsBtn = button(root, "黑名单", SURFACE, TEXT);
         appsBtn.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 startActivity(new Intent(MainActivity.this, AppListActivity.class));
@@ -189,7 +189,7 @@ public class MainActivity extends Activity {
             lockNote.setVisibility(View.GONE);
         }
 
-        appsBtn.setText("白名单 · " + total + " 个应用");
+        appsBtn.setText("黑名单 · " + total + " 个应用");
         styleSecondary(appsBtn, false);
         styleSecondary(applyBtn, false);
 

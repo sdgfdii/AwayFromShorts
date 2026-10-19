@@ -24,10 +24,10 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * 白名单管理页：一行一个应用，点开改它的时段。
+ * 黑名单管理页：一行一个应用，点开改它的时段。
  *
  * 单独一页是必须的 —— 主界面塞满卡片之后，应用一多就得一直往下滑，
- * 而这里本来就是"白名单"，平时不需要看，需要时才进来改。
+ * 而这里本来就是"黑名单"，平时不需要看，需要时才进来改。
  */
 public class AppListActivity extends Activity {
 
@@ -66,14 +66,14 @@ public class AppListActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         title = new TextView(this);
-        title.setText("白名单");
+        title.setText("黑名单");
         title.setTextSize(22);
         title.setTypeface(Typeface.DEFAULT_BOLD);
         title.setTextColor(TEXT);
         root.addView(title);
 
         hint = new TextView(this);
-        hint.setText("点一行改它的放行时段，长按从白名单移除。");
+        hint.setText("点一行改它的放行时段，长按从黑名单移除。");
         hint.setTextSize(12);
         hint.setTextColor(TEXT2);
         hint.setPadding(0, dp(4), 0, dp(12));
@@ -85,7 +85,7 @@ public class AppListActivity extends Activity {
         root.addView(list);
 
         empty = new TextView(this);
-        empty.setText("白名单是空的。点下面的「添加应用」选一个。");
+        empty.setText("黑名单是空的。点下面的「添加应用」选一个。");
         empty.setTextSize(13);
         empty.setTextColor(TEXT2);
         empty.setPadding(dp(2), dp(12), 0, dp(12));
@@ -160,7 +160,7 @@ public class AppListActivity extends Activity {
             }
         }
         if (refused > 0) {
-            toast(refused + " 个应用正在屏蔽中，不能移出白名单");
+            toast(refused + " 个应用正在屏蔽中，不能移出黑名单");
         }
         rebuild();
         applyInBackground();
@@ -183,17 +183,17 @@ public class AppListActivity extends Activity {
         addBtn.setBackgroundColor(can ? SURFACE : LINE);
         addBtn.setAlpha(can ? 1f : 0.55f);
         hint.setText(can
-                ? "点一行改它的放行时段，长按从白名单移除。"
-                : "全部应用都在屏蔽中：白名单现在改不了，等某一应用进入自己的放行时段。");
+                ? "点一行改它的放行时段，长按从黑名单移除。"
+                : "全部应用都在屏蔽中：黑名单现在改不了，等某一应用进入自己的放行时段。");
     }
 
     /**
-     * 能不能改白名单（加应用）。
+     * 能不能改黑名单（加应用）。
      *
      * 全部应用都在屏蔽中时不给加 —— 跟"这一页现在改不了"保持一致，
      * 否则界面上写着锁着、下面却有个能点的按钮，很荒唐。
      *
-     * 唯一例外：白名单是空的。空列表里没有任何窗口，不给加就永远加不回来（直接死锁）。
+     * 唯一例外：黑名单是空的。空列表里没有任何窗口，不给加就永远加不回来（直接死锁）。
      */
     private boolean canAdd() {
         return Config.inGrace(this) || Guard.anyUnlocked(this) || RuleStore.count(this) == 0;
@@ -411,7 +411,7 @@ public class AppListActivity extends Activity {
             return;
         }
         new AlertDialog.Builder(this)
-                .setTitle("移出白名单")
+                .setTitle("移出黑名单")
                 .setMessage(Guard.labelOf(getPackageManager(), pkg) + " 将不再被管理（立刻解冻）。")
                 .setPositiveButton("移除", new DialogInterface.OnClickListener() {
                     public void onClick(DialogInterface d, int which) {

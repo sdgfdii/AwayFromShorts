@@ -28,7 +28,7 @@ There is also a lighter Android option in `phone/blocker/` (Accessibility Servic
 
 <img src="docs/screenshots/04-blocked.png" width="260" alt="blocked state">
 <img src="docs/screenshots/01-light.png" width="260" alt="allowed state">
-<img src="docs/screenshots/02-list.png" width="260" alt="whitelist">
+<img src="docs/screenshots/02-list.png" width="260" alt="blacklist">
 <img src="docs/screenshots/03-edit.png" width="260" alt="per-app schedule editor">
 
 The home screen is status only. The app list lives on its own screen — one row per app,
