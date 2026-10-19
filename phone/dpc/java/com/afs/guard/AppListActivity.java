@@ -48,6 +48,7 @@ public class AppListActivity extends Activity {
     private TextView hint;
     private TextView empty;
     private Button addBtn;
+    private Button pkgBtn;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final java.util.List<TextView> labels = new ArrayList<>();
@@ -113,6 +114,27 @@ public class AppListActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(48));
         alp.topMargin = dp(12);
         root.addView(addBtn, alp);
+
+        // 按包名加：还没装的应用也能先进黑名单，装上之后自动被管
+        pkgBtn = new Button(this);
+        pkgBtn.setText("＋ 按包名添加");
+        pkgBtn.setAllCaps(false);
+        pkgBtn.setTextSize(14);
+        pkgBtn.setTextColor(TEXT2);
+        pkgBtn.setBackgroundColor(SURFACE);
+        pkgBtn.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                if (!canAdd()) {
+                    toast("全部应用都在屏蔽中，等某一应用进入自己的放行时段再加");
+                    return;
+                }
+                promptPackage();
+            }
+        });
+        LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(48));
+        plp.topMargin = dp(6);
+        root.addView(pkgBtn, plp);
 
         setContentView(scroll);
         // 这页固定浅色，状态栏跟着走，否则顶部会留一条系统灰
@@ -182,6 +204,10 @@ public class AppListActivity extends Activity {
         addBtn.setTextColor(can ? BRAND : 0xFF9A9AA0);
         addBtn.setBackgroundColor(can ? SURFACE : LINE);
         addBtn.setAlpha(can ? 1f : 0.55f);
+        pkgBtn.setEnabled(can);
+        pkgBtn.setTextColor(can ? TEXT2 : 0xFF9A9AA0);
+        pkgBtn.setBackgroundColor(can ? SURFACE : LINE);
+        pkgBtn.setAlpha(can ? 1f : 0.55f);
         hint.setText(can
                 ? "点一行改它的放行时段，长按从黑名单移除。"
                 : "全部应用都在屏蔽中：黑名单现在改不了，等某一应用进入自己的放行时段。");
@@ -416,6 +442,42 @@ public class AppListActivity extends Activity {
                 .setPositiveButton("移除", new DialogInterface.OnClickListener() {
                     public void onClick(DialogInterface d, int which) {
                         RuleStore.remove(AppListActivity.this, pkg);
+                        rebuild();
+                        applyInBackground();
+                    }
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    /** 手动输入包名 —— 主要给"还没装"的应用用，装上后自动被管。 */
+    private void promptPackage() {
+        final android.widget.EditText input = new android.widget.EditText(this);
+        input.setHint("com.example.app");
+        input.setSingleLine(true);
+        input.setPadding(dp(20), dp(10), dp(20), dp(10));
+
+        LinearLayout wrap = new LinearLayout(this);
+        wrap.setOrientation(LinearLayout.VERTICAL);
+        wrap.setPadding(dp(8), dp(4), dp(8), 0);
+        wrap.addView(input, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        new AlertDialog.Builder(this)
+                .setTitle("按包名添加到黑名单")
+                .setMessage("应用还没装也可以先加：装上之后它会被自动冻结。\n包名必须完全一致，填错了这条规则不会匹配任何东西。")
+                .setView(wrap)
+                .setPositiveButton("添加", new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface d, int which) {
+                        String pkg = input.getText().toString().trim();
+                        if (pkg.length() == 0) {
+                            return;
+                        }
+                        if (RuleStore.packages(AppListActivity.this).contains(pkg)) {
+                            toast("它已经在黑名单里");
+                            return;
+                        }
+                        RuleStore.put(AppListActivity.this, pkg, RuleStore.defaultRule(AppListActivity.this));
                         rebuild();
                         applyInBackground();
                     }
