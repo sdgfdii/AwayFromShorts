@@ -49,6 +49,9 @@ App 本身，只能在系统层面把 App 冻住。
 第三个画面是点开抖音时的系统弹窗 —— 不是 App 自己弹的，是 Android 的
 `ActionDisabledByAdminDialog`，App 自己一行代码都没参与。
 
+**每个应用可以有自己的时段**：抖音只给 21:00–23:00，微信给 07:00–22:00，B 站只给周末。
+各条规则互不影响，锁定也是按应用算的——某个 App 正在自己的屏蔽时间里，就不能改它、不能移出列表。
+
 不想自己编，直接下 APK：[Releases](https://github.com/sdgfdii/AwayFromShorts/releases/latest)
 
 一条命令部署（连上手机、开 USB 调试即可）：
@@ -185,7 +188,7 @@ AwayFromShorts/
 │   │   ├── uninstall.sh       # 唯一逃生口
 │   │   ├── build.sh           # 手工构建，不用 Gradle
 │   │   ├── COMPATIBILITY.md   # 跨机型可行性
-│   │   ├── test/run.sh        # 离线回归（38 项，不用手机）
+│   │   ├── test/run.sh        # 离线回归（45 项，不用手机）
 │   │   └── java/com/afs/guard/
 │   ├── blocker/           # 无障碍版（无需 DO）
 │   │   ├── build.sh

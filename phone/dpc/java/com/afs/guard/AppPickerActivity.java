@@ -101,7 +101,7 @@ public class AppPickerActivity extends Activity {
                     main.addCategory(Intent.CATEGORY_LAUNCHER);
                     List<ResolveInfo> ris = pm.queryIntentActivities(main, 0);
                     Set<String> seen = new HashSet<>();
-                    Set<String> picked = Targets.packages(AppPickerActivity.this);
+                    Set<String> picked = RuleStore.packages(AppPickerActivity.this);
                     for (ResolveInfo ri : ris) {
                         if (ri.activityInfo == null) {
                             continue;
@@ -139,7 +139,7 @@ public class AppPickerActivity extends Activity {
                             shown.add(e.pkg);
                         }
                         int hidden = 0;
-                        for (String p : Targets.packages(AppPickerActivity.this)) {
+                        for (String p : RuleStore.packages(AppPickerActivity.this)) {
                             if (!shown.contains(p)) {
                                 hidden++;
                             }
@@ -169,7 +169,7 @@ public class AppPickerActivity extends Activity {
             installable.add(e.pkg);
         }
         Set<String> out = new HashSet<>();
-        for (String p : Targets.packages(this)) {
+        for (String p : RuleStore.packages(this)) {
             if (!installable.contains(p)) {
                 out.add(p);
             }
@@ -179,8 +179,11 @@ public class AppPickerActivity extends Activity {
                 out.add(e.pkg);
             }
         }
-        Targets.setPackages(this, out);
-        setResult(RESULT_OK, new Intent());
+        // 由 MainActivity 决定"哪些是新增、哪些是移除"——
+        // 移除要按每个应用自己的锁定状态判，不能在这儿一刀切
+        Intent data = new Intent();
+        data.putStringArrayListExtra("picked", new java.util.ArrayList<String>(out));
+        setResult(RESULT_OK, data);
         finish();
     }
 

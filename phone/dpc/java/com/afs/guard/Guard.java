@@ -14,18 +14,21 @@ import android.os.UserManager;
 
 import java.util.Calendar;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 全部判定与落地逻辑都在这里，UI / 定时器 / 开机广播共用一套。
  *
  * 核心：Device Owner 的 setPackagesSuspended() 会把目标 App 直接冻结，
  * 图标变灰、点不开、后台被杀，而且没有「忽略限制」「延长 15 分钟」这种口子。
+ *
+ * 每个应用有自己的 {@link Rule}（放行星期 + 放行时段），判定一律按包名走。
  */
 public final class Guard {
 
     /* ==================== 可调参数 ==================== */
 
-    /** 默认管哪些包 —— 用户没在「选择应用」里改过就用这个 */
+    /** 默认管哪些包 —— 用户没在「添加应用」里改过就用这个 */
     public static final String[] DEFAULT_TARGETS = new String[] {
             "com.ss.android.ugc.aweme",       // 抖音
             "com.ss.android.ugc.aweme.lite",  // 抖音极速版
@@ -39,7 +42,7 @@ public final class Guard {
     public static final boolean BLOCK_TIME_CHANGE   = true;  // 禁止改系统时间（否则改个钟就绕过去了）
     public static final boolean BLOCK_UNINSTALL_ALL = false; // 禁止卸载任何应用（比较狠，默认关）
 
-    /** 屏蔽时段要不要连浏览器一起冻结（堵抖音网页版）。默认关，觉得有必要改成 true。 */
+    /** 只要有应用处于冻结，就把浏览器一起冻结（堵短视频网页版）。默认关。 */
     public static final boolean ALSO_SUSPEND_BROWSERS = false;
 
     private static final String[] BROWSERS = new String[] {
@@ -79,96 +82,99 @@ public final class Guard {
         }
     }
 
-    /* ==================== 时间窗口 ==================== */
+    /* ==================== 判定（按应用） ==================== */
 
     /**
-     * 现在是否屏蔽。三个来源：
-     *   1) 强制模式中            → 无条件屏蔽
-     *   2) 今天不在选中的星期    → 全天屏蔽
-     *   3) 不在 [start, end) 里  → 屏蔽
-     *
-     * 跨午夜（start > end）时，"选中的星期"指窗口起始日：
-     * 周一 23:00–次日 20:00 的凌晨那段，算周一的窗口。
+     * 纯判定：强制开着就屏蔽，否则看这个应用自己的窗口。
+     * 不碰 Context —— 离线回归直接调它。
      */
-    public static boolean isBlocked(Calendar c, int daysMask, int startMin, int endMin, boolean force) {
-        if (force) {
-            return true;
-        }
-        int mod = c.get(Calendar.HOUR_OF_DAY) * 60 + c.get(Calendar.MINUTE);
-        int s = norm(startMin);
-        int e = norm(endMin);
-        int today = Config.monIndex(c);
-        int yesterday = (today + 6) % 7;
-
-        if (s == e) {
-            // 起止相同 = 全天放行（只对选中的星期生效）
-            return !Config.daySelected(daysMask, today);
-        }
-        if (s < e) {
-            boolean ok = Config.daySelected(daysMask, today) && mod >= s && mod < e;
-            return !ok;
-        }
-        // 跨午夜
-        boolean evening = Config.daySelected(daysMask, today) && mod >= s;
-        boolean morning = Config.daySelected(daysMask, yesterday) && mod < e;
-        return !(evening || morning);
-    }
-
-    /** 当前配置下是否屏蔽。 */
-    public static boolean isBlockedNow(Context ctx) {
-        return isBlocked(Calendar.getInstance(), Config.days(ctx),
-                Config.startMin(ctx), Config.endMin(ctx), Config.forceOn(ctx));
-    }
-
-    /** 现在是否落在时间表的放行窗口里（不考虑强制模式）。 */
-    public static boolean inWindowNow(Context ctx) {
-        return !isBlocked(Calendar.getInstance(), Config.days(ctx),
-                Config.startMin(ctx), Config.endMin(ctx), false);
+    public static boolean blocked(Rule r, Calendar c, boolean force) {
+        return force || !r.inWindow(c);
     }
 
     /**
-     * 现在能不能改设置。跟 isBlocked 同义，唯一区别是：
-     * 从没保存过配置时放行一次，否则装完正好落在屏蔽时段就成死锁了。
+     * 多个应用里最早的下一次翻转。
+     * 闹钟只能排一个时刻，排最早的；响了之后 apply() 会把所有应用重判一遍。
      */
-    public static boolean isLockedNow(Context ctx) {
-        // ★ 只看时间表，不看强制模式。
-        // 如果用 isBlockedNow 判定，强制模式开着时就永远是"锁定"，
-        // 连放行时段也关不掉 —— 自己把自己锁死。
-        if (inWindowNow(ctx)) {
-            return false;
-        }
-        return !Config.inGrace(ctx);
-    }
-
-    /**
-     * 下一次状态翻转的时刻（毫秒）。
-     *
-     * 逐分钟扫，最多扫 8 天。以前的"跳到下一个边界"算法在引入星期之后会算错
-     * （比如只选周一，下一个边界得跳过整整六天），逐分钟扫反而简单可靠：
-     * 8×1440 = 11520 次循环，微秒级，没必要优化。
-     */
-    public static long nextFlipMillis(Calendar now, int daysMask, int startMin, int endMin) {
-        Calendar t = (Calendar) now.clone();
-        t.set(Calendar.SECOND, 0);
-        t.set(Calendar.MILLISECOND, 0);
-        boolean cur = isBlocked(t, daysMask, startMin, endMin, false);
-        for (int i = 0; i < 8 * 1440 + 2; i++) {
-            t.add(Calendar.MINUTE, 1);
-            if (isBlocked(t, daysMask, startMin, endMin, false) != cur) {
-                return t.getTimeInMillis();
+    public static long nextFlipOf(java.util.Collection<Rule> rules, Calendar now) {
+        long best = Long.MAX_VALUE;
+        for (Rule r : rules) {
+            long t = r.nextFlip(now);
+            if (t < best) {
+                best = t;
             }
         }
-        return now.getTimeInMillis() + 3600000L;
+        return best == Long.MAX_VALUE ? now.getTimeInMillis() + 3600000L : best;
     }
 
-    private static int norm(int minuteOfDay) {
-        return ((minuteOfDay % 1440) + 1440) % 1440;
+    /**
+     * 这个应用现在是否该冻结。
+     * 强制模式开着 → 全部冻结；否则看它自己的窗口。
+     */
+    public static boolean blockedNow(Context ctx, String pkg) {
+        return blocked(RuleStore.get(ctx, pkg), Calendar.getInstance(), Config.forceOn(ctx));
+    }
+
+    /** 这个应用现在是否在自己的放行窗口里（不看强制模式）。 */
+    public static boolean inWindowNow(Context ctx, String pkg) {
+        return RuleStore.get(ctx, pkg).inWindow(Calendar.getInstance());
+    }
+
+    /**
+     * 这个应用现在能不能改设置。
+     *
+     * ★ 只看它自己的窗口，不看强制模式 —— 否则强制模式一开就永远"锁定"，
+     * 连放行时段也关不掉，自己把自己锁死。
+     */
+    public static boolean lockedNow(Context ctx, String pkg) {
+        if (Config.inGrace(ctx)) {
+            return false;
+        }
+        return !inWindowNow(ctx, pkg);
+    }
+
+    /** 有没有应用正处在放行窗口（决定强制模式能不能关）。 */
+    public static boolean anyUnlocked(Context ctx) {
+        Calendar now = Calendar.getInstance();
+        for (Rule r : RuleStore.all(ctx).values()) {
+            if (r.inWindow(now)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** 全部应用都处于屏蔽 → 整页切深色。 */
+    public static boolean allBlocked(Context ctx) {
+        return !anyUnlocked(ctx);
+    }
+
+    public static int blockedCount(Context ctx) {
+        Calendar now = Calendar.getInstance();
+        boolean force = Config.forceOn(ctx);
+        int n = 0;
+        for (Rule r : RuleStore.all(ctx).values()) {
+            if (force || !r.inWindow(now)) {
+                n++;
+            }
+        }
+        return n;
+    }
+
+    /**
+     * 下一次有应用要翻转状态的时刻 —— 取所有应用里最早的那个。
+     *
+     * 每个应用各有各的窗口，闹钟只能排最早的一个边界；响了之后
+     * apply() 会把所有应用重新判一遍，并重新排下一次。
+     */
+    public static long nextFlipMillis(Context ctx) {
+        return nextFlipOf(RuleStore.all(ctx).values(), Calendar.getInstance());
     }
 
     /* ==================== 落地 ==================== */
 
     /**
-     * 按当前时间把目标 App 冻结/解冻，并补齐各项限制。
+     * 按当前时间把每个目标 App 单独冻结/解冻，并补齐各项限制。
      * 幂等：反复调用没有副作用。
      */
     public static String apply(Context ctx) {
@@ -181,75 +187,84 @@ public final class Guard {
         }
 
         ComponentName a = admin(ctx);
-        boolean allow = !isBlockedNow(ctx);
         applyRestrictions(ctx, d, a);
 
-        StringBuilder sb = new StringBuilder();
-        sb.append("模式：").append(allow ? "放行" : "屏蔽").append('\n');
+        Map<String, Rule> rules = RuleStore.all(ctx);
+        Calendar now = Calendar.getInstance();
+        boolean force = Config.forceOn(ctx);
+        boolean anyBlocked = false;
+        for (Rule r : rules.values()) {
+            if (force || !r.inWindow(now)) {
+                anyBlocked = true;
+                break;
+            }
+        }
 
         PackageManager pm = ctx.getPackageManager();
-        java.util.Set<String> now = Targets.packages(ctx);
-        java.util.Set<String> prev = Targets.applied(ctx);
+        StringBuilder sb = new StringBuilder();
+        int frozen = 0;
+
         // 被移出列表的必须先解冻，否则它会永远停在被冻结的状态
-        for (String p : prev) {
-            if (!now.contains(p)) {
+        for (String p : RuleStore.applied(ctx)) {
+            if (!rules.containsKey(p)) {
                 try {
                     d.setPackagesSuspended(a, new String[] { p }, false);
                     d.setUninstallBlocked(a, p, false);
-                    sb.append("- ").append(labelOf(pm, p)).append("：已移出列表，解冻\n");
                 } catch (Throwable ignored) {
                 }
             }
         }
-        for (String p : now) {
-            String label = labelOf(pm, p);
-            if (!installed(pm, p)) {
-                sb.append("- ").append(p).append("：未安装\n");
+
+        for (Map.Entry<String, Rule> e : rules.entrySet()) {
+            String pkg = e.getKey();
+            Rule r = e.getValue();
+            if (!installed(pm, pkg)) {
+                sb.append("- ").append(pkg).append("：未安装\n");
                 continue;
             }
+            boolean block = force || !r.inWindow(now);
             try {
-                d.setUninstallBlocked(a, p, true);
+                d.setUninstallBlocked(a, pkg, true);
             } catch (Throwable ignored) {
             }
             String state;
             try {
-                d.setPackagesSuspended(a, new String[] { p }, !allow);
-                state = allow ? "已放行" : "已冻结";
+                d.setPackagesSuspended(a, new String[] { pkg }, block);
+                state = block ? "已冻结" : "放行中";
             } catch (Throwable t) {
                 state = "冻结失败：" + t.getClass().getSimpleName();
             }
-            // 应用名在前、包名在后：名字给人看，包名方便核对是哪个版本
-            sb.append("- ").append(label).append("（").append(p).append("）：")
-                    .append(state).append('\n');
+            if (block) {
+                frozen++;
+            }
+            // 应用名给人看，包名方便核对是哪个版本，后面带它自己的时段
+            sb.append("- ").append(labelOf(pm, pkg)).append("（").append(pkg).append("）：")
+                    .append(state).append(" · ").append(r.summary()).append('\n');
         }
-        Targets.setApplied(ctx, now);
+        RuleStore.setApplied(ctx, rules.keySet());
 
-        if (ALSO_SUSPEND_BROWSERS && !allow) {
+        if (ALSO_SUSPEND_BROWSERS) {
             for (int i = 0; i < BROWSERS.length; i++) {
                 if (!installed(pm, BROWSERS[i])) {
                     continue;
                 }
                 try {
-                    d.setPackagesSuspended(a, new String[] { BROWSERS[i] }, true);
-                    sb.append("- ").append(BROWSERS[i]).append("：已冻结（堵网页版）\n");
-                } catch (Throwable ignored) {
-                }
-            }
-        } else if (ALSO_SUSPEND_BROWSERS) {
-            for (int i = 0; i < BROWSERS.length; i++) {
-                if (!installed(pm, BROWSERS[i])) {
-                    continue;
-                }
-                try {
-                    d.setPackagesSuspended(a, new String[] { BROWSERS[i] }, false);
+                    d.setPackagesSuspended(a, new String[] { BROWSERS[i] }, anyBlocked);
+                    if (anyBlocked) {
+                        sb.append("- ").append(BROWSERS[i]).append("：已冻结（堵网页版）\n");
+                    }
                 } catch (Throwable ignored) {
                 }
             }
         }
+
         // ★ 每次 apply 都重排一次定时。package 覆盖安装会清掉所有 alarm/job，
         // 而 schedule() 原本只在开机/闹钟/Job 回调里调用 —— 装完就再也排不上了。
         schedule(ctx);
-        return sb.toString();
+
+        String head = "结果：" + rules.size() + " 个应用，"
+                + frozen + " 个冻结" + (force ? "（强制模式）" : "") + "\n";
+        return head + sb.toString();
     }
 
     private static void applyRestrictions(Context ctx, DevicePolicyManager d, ComponentName a) {
@@ -284,7 +299,7 @@ public final class Guard {
     }
 
     /** 应用名；取不到就退回包名。 */
-    private static String labelOf(PackageManager pm, String pkg) {
+    static String labelOf(PackageManager pm, String pkg) {
         try {
             return String.valueOf(pm.getApplicationInfo(pkg, 0).loadLabel(pm));
         } catch (Throwable t) {
@@ -303,13 +318,12 @@ public final class Guard {
 
     /* ==================== 定时 ==================== */
 
-    /** 只在两个边界时刻各响一次 + 15 分钟 JobScheduler 兜底，不搞每分钟轮询。 */
+    /** 只在边界时刻各响一次 + 15 分钟 JobScheduler 兜底，不搞每分钟轮询。 */
     public static void schedule(Context ctx) {
         AlarmManager am = (AlarmManager) ctx.getSystemService(Context.ALARM_SERVICE);
         if (am != null) {
             PendingIntent pi = alarms(ctx);
-            long at = nextFlipMillis(Calendar.getInstance(),
-                    Config.days(ctx), Config.startMin(ctx), Config.endMin(ctx));
+            long at = nextFlipMillis(ctx);
             try {
                 // ★ 用 setAlarmClock：它是系统闹钟级，ColorOS 的 OplusAlarmAdjustment
                 // 不敢批处理它，窗口恒为 0。setExactAndAllowWhileIdle 实测被拉成 1 小时窗口，
@@ -360,38 +374,19 @@ public final class Guard {
 
     public static String describe(Context ctx) {
         Calendar now = Calendar.getInstance();
+        int total = RuleStore.count(ctx);
+        int frozen = blockedCount(ctx);
+        boolean force = Config.forceOn(ctx);
+
         StringBuilder sb = new StringBuilder();
         sb.append("设备所有者　").append(isOwner(ctx) ? "是（已锁死）" : "否 —— 冻结不会生效").append('\n');
         sb.append("当前时间　").append(stamp(now.getTimeInMillis())).append('\n');
-        int daysMask = Config.days(ctx);
-        int sm = Config.startMin(ctx);
-        int em = Config.endMin(ctx);
-        boolean force = Config.forceOn(ctx);
-        sb.append("放行星期　").append(Config.daysText(daysMask)).append('\n');
-        sb.append("放行时段　").append(hm(sm / 60, sm % 60))
-                .append(" - ").append(hm(em / 60, em % 60))
-                .append(sm > em ? "（跨午夜）" : "").append('\n');
         sb.append("强制模式　").append(force ? "已开启（放行时段才能关）" : "未开启").append('\n');
-        sb.append("现在状态　").append(isBlockedNow(ctx) ? "屏蔽中" : "放行中").append('\n');
-        sb.append("下次切换　").append(stamp(nextFlipMillis(now, daysMask, sm, em))).append('\n');
+        sb.append("应用　　　").append(total).append(" 个，").append(frozen).append(" 个冻结中").append('\n');
+        sb.append("下次切换　").append(total == 0 ? "—（没添加应用）" : stamp(nextFlipMillis(ctx))).append('\n');
         sb.append('\n');
         sb.append("加固项　").append(restrictionSummary()).append('\n');
         return sb.toString();
-    }
-
-    public static boolean isCrossDay(Context ctx) {
-        return Config.startMin(ctx) > Config.endMin(ctx);
-    }
-
-    /** 剩余时间文案。 */
-    public static String remainText(long millis) {
-        if (millis <= 0) {
-            return "0 分";
-        }
-        long totalMin = millis / 60000L;
-        long h = totalMin / 60;
-        long m = totalMin % 60;
-        return h > 0 ? (h + " 小时 " + m + " 分") : (m + " 分");
     }
 
     private static String restrictionSummary() {
@@ -413,21 +408,6 @@ public final class Guard {
             sb.append(items.get(i));
         }
         return sb.toString();
-    }
-
-    public static String hm(int h, int m) {
-        StringBuilder sb = new StringBuilder();
-        pad(sb, h);
-        sb.append(':');
-        pad(sb, m);
-        return sb.toString();
-    }
-
-    private static void pad(StringBuilder sb, int v) {
-        if (v < 10) {
-            sb.append('0');
-        }
-        sb.append(v);
     }
 
     public static String stamp(long millis) {

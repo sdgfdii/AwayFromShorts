@@ -36,6 +36,10 @@ The third frame of the GIF is what you see when you tap the frozen app: that dia
 Android's own `ActionDisabledByAdminDialog`, not something the app draws — the app isn't
 even running at that point.
 
+**Each app has its own schedule.** Douyin only 21:00–23:00, WeChat 07:00–22:00, Bilibili
+weekends only. The rules are independent, and locking is per-app: while an app is inside
+its own blocked window you can't edit it or remove it from the list.
+
 ### Why Device Owner
 
 Android gives exactly one way to make an app truly unopenable: `DevicePolicyManager.setPackagesSuspended()`.
