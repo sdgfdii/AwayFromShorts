@@ -27,6 +27,16 @@ public final class RuleStore {
     /** 新加的应用默认用这个：每天 21:00–23:00。 */
     public static final Rule FALLBACK = new Rule(Rule.ALL_DAYS, 21 * 60, 23 * 60);
 
+    /**
+     * 新加应用后的可编辑窗口。
+     *
+     * 不加这个会很难用：默认规则是 21:00–23:00，你在上午加一个应用，
+     * 它当场就被判成"在屏蔽时间里"，那张卡立刻变灰 —— 你连时段都设不了，
+     * 得等到自己的 21 点。所以刚加的 10 分钟里允许改时段。
+     * ★ 但**移除**不吃这个宽限（见 Guard.canRemove），否则删掉就等于绕过了。
+     */
+    public static final long NEW_GRACE_MS = 10L * 60L * 1000L;
+
     private RuleStore() {
     }
 
@@ -89,9 +99,53 @@ public final class RuleStore {
 
     public static void put(Context c, String pkg, Rule r) {
         Map<String, Rule> m = all(c);
+        boolean fresh = !m.containsKey(pkg);
         m.put(pkg, r);
         save(c, m);
+        if (fresh) {
+            markAdded(c, pkg);
+        }
         setLast(c, r);
+    }
+
+    /* ---------- 新加应用的时间戳 ---------- */
+
+    public static void markAdded(Context c, String pkg) {
+        try {
+            JSONObject o = raw(c);
+            JSONObject r = o.optJSONObject(pkg);
+            if (r == null) {
+                r = new JSONObject();
+                o.put(pkg, r);
+            }
+            r.put("at", System.currentTimeMillis());
+            sp(c).edit().putString(K_RULES, o.toString()).apply();
+        } catch (Throwable ignored) {
+        }
+    }
+
+    public static long addedAt(Context c, String pkg) {
+        try {
+            JSONObject r = raw(c).optJSONObject(pkg);
+            return r == null ? 0L : r.optLong("at", 0L);
+        } catch (Throwable ignored) {
+            return 0L;
+        }
+    }
+
+    /** 刚加进来还没过宽限期。 */
+    public static boolean isFresh(Context c, String pkg) {
+        long at = addedAt(c, pkg);
+        return at > 0L && System.currentTimeMillis() - at < NEW_GRACE_MS;
+    }
+
+    private static JSONObject raw(Context c) {
+        String s = sp(c).getString(K_RULES, "");
+        try {
+            return new JSONObject(s.length() == 0 ? "{}" : s);
+        } catch (Throwable t) {
+            return new JSONObject();
+        }
     }
 
     public static void remove(Context c, String pkg) {
@@ -101,6 +155,7 @@ public final class RuleStore {
     }
 
     private static void save(Context c, Map<String, Rule> m) {
+        JSONObject old = raw(c);
         JSONObject o = new JSONObject();
         try {
             for (Map.Entry<String, Rule> e : m.entrySet()) {
@@ -108,6 +163,11 @@ public final class RuleStore {
                 r.put("d", e.getValue().days);
                 r.put("s", e.getValue().start);
                 r.put("e", e.getValue().end);
+                // 新加应用的时间戳要留着，否则每次改时段都会重新给一次宽限
+                JSONObject prev = old.optJSONObject(e.getKey());
+                if (prev != null && prev.has("at")) {
+                    r.put("at", prev.optLong("at", 0L));
+                }
                 o.put(e.getKey(), r);
             }
         } catch (Throwable ignored) {

@@ -130,7 +130,20 @@ public final class Guard {
         if (Config.inGrace(ctx)) {
             return false;
         }
+        // 刚加进来的 10 分钟里允许改时段，否则上午加应用、当场锁死到 21 点
+        if (RuleStore.isFresh(ctx, pkg)) {
+            return false;
+        }
         return !inWindowNow(ctx, pkg);
+    }
+
+    /**
+     * 能不能把它移出列表。
+     * ★ 只认"此刻真的在它的放行窗口里"，不吃刚加的宽限 ——
+     * 否则"加进来 → 趁宽限删掉"就是一条绕过路径。
+     */
+    public static boolean canRemove(Context ctx, String pkg) {
+        return Config.inGrace(ctx) || inWindowNow(ctx, pkg);
     }
 
     /** 有没有应用正处在放行窗口（决定强制模式能不能关）。 */
@@ -154,7 +167,7 @@ public final class Guard {
         boolean force = Config.forceOn(ctx);
         int n = 0;
         for (Rule r : RuleStore.all(ctx).values()) {
-            if (force || !r.inWindow(now)) {
+            if (blocked(r, now, force)) {
                 n++;
             }
         }
@@ -194,7 +207,7 @@ public final class Guard {
         boolean force = Config.forceOn(ctx);
         boolean anyBlocked = false;
         for (Rule r : rules.values()) {
-            if (force || !r.inWindow(now)) {
+            if (blocked(r, now, force)) {
                 anyBlocked = true;
                 break;
             }
@@ -222,7 +235,7 @@ public final class Guard {
                 sb.append("- ").append(pkg).append("：未安装\n");
                 continue;
             }
-            boolean block = force || !r.inWindow(now);
+            boolean block = blocked(r, now, force);
             try {
                 d.setUninstallBlocked(a, pkg, true);
             } catch (Throwable ignored) {

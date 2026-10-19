@@ -2,4 +2,5 @@
 <resources>
     <string name="app_name">AwayFromShorts</string>
     <string name="pick_title">选择要冻结的应用</string>
+    <string name="list_title">白名单与时段</string>
 </resources>

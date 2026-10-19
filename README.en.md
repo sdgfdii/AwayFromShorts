@@ -26,11 +26,16 @@ There is also a lighter Android option in `phone/blocker/` (Accessibility Servic
 
 <img src="docs/screenshots/demo.gif" width="300" alt="demo: allowed → auto-freeze at schedule → launch blocked by the system">
 
-<img src="docs/screenshots/03-blocked.png" width="260" alt="blocked state"> <img src="docs/screenshots/01-light.png" width="260" alt="allowed state"> <img src="docs/screenshots/02-picker.png" width="260" alt="app picker">
+<img src="docs/screenshots/04-blocked.png" width="260" alt="blocked state">
+<img src="docs/screenshots/01-light.png" width="260" alt="allowed state">
+<img src="docs/screenshots/02-list.png" width="260" alt="whitelist">
+<img src="docs/screenshots/03-edit.png" width="260" alt="per-app schedule editor">
 
-Left: blocked state — the whole UI goes dark, every control is disabled.
-Middle: allowed state — light theme, settings editable.
-Right: pick which apps to freeze.
+The home screen is status only. The app list lives on its own screen — one row per app,
+tap a row to edit that app's schedule. No endless scrolling as the list grows.
+
+Blocked state: the whole UI goes dark, every control is disabled.
+Allowed state: light theme, settings editable.
 
 The third frame of the GIF is what you see when you tap the frozen app: that dialog is
 Android's own `ActionDisabledByAdminDialog`, not something the app draws — the app isn't

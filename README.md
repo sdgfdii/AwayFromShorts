@@ -41,16 +41,19 @@ App 本身，只能在系统层面把 App 冻住。
 
 <img src="docs/screenshots/demo.gif" width="300" alt="演示：放行 → 到点冻结 → 打开被系统拦">
 
-<img src="docs/screenshots/03-blocked.png" width="240" alt="屏蔽中">
-<img src="docs/screenshots/01-light.png" width="240" alt="放行中">
-<img src="docs/screenshots/02-picker.png" width="240" alt="选择应用">
+<img src="docs/screenshots/01-light.png" width="210" alt="放行中">
+<img src="docs/screenshots/04-blocked.png" width="210" alt="屏蔽中（整页变黑）">
+<img src="docs/screenshots/02-list.png" width="210" alt="白名单">
+<img src="docs/screenshots/03-edit.png" width="210" alt="改某个应用的时段">
+
+首页只看状态，**应用列表单独一页**：一行一个，点开改那条规则。应用再多也不用在首页往下滑。
 
 屏蔽时段整页变黑、所有控件禁用；放行时段切回浅色可编辑。
-第三个画面是点开抖音时的系统弹窗 —— 不是 App 自己弹的，是 Android 的
+GIF 第三个画面是点开抖音时的系统弹窗 —— 不是 App 自己弹的，是 Android 的
 `ActionDisabledByAdminDialog`，App 自己一行代码都没参与。
 
 **每个应用可以有自己的时段**：抖音只给 21:00–23:00，微信给 07:00–22:00，B 站只给周末。
-各条规则互不影响，锁定也是按应用算的——某个 App 正在自己的屏蔽时间里，就不能改它、不能移出列表。
+各条规则互不影响，锁定也是按应用算的——某个 App 正在自己的屏蔽时间里，就不能改它、不能移出白名单。
 
 不想自己编，直接下 APK：[Releases](https://github.com/sdgfdii/AwayFromShorts/releases/latest)
 
