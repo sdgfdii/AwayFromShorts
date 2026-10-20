@@ -121,6 +121,7 @@ public class MainActivity extends Activity {
         root.addView(foot);
 
         setContentView(scroll);
+        Guard.ensureService(this);   // 每次打开 App 顺手保证常驻守护在跑
         render();
     }
 

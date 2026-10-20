@@ -123,6 +123,17 @@ if ! echo "$OUT" | grep -q "Success"; then
 fi
 ok "已安装"
 
+# pm install -r 之后 App 处于 stopped 状态，系统广播（含 MY_PACKAGE_REPLACED / BOOT_COMPLETED）
+# 根本送不进去 —— 闹钟从此不排，只有手动打开 App 才会冻。这里用显式广播把它叫起来，
+# 让 apply() + schedule() 立刻跑一遍（--include-stopped-packages 是关键）。
+"$ADB" shell "am broadcast --include-stopped-packages -a com.afs.guard.WAKE -n com.afs.guard/.BootReceiver" >/dev/null 2>&1
+sleep 2
+if "$ADB" shell "dumpsys alarm" 2>/dev/null | grep -q "com.afs.guard"; then
+  ok "闹钟已排上（未打开 App 也会按时冻结/放行）"
+else
+  warn "闹钟没排上：请手动打开一次 App"
+fi
+
 # ---------- 6. 设为设备所有者 ----------
 say "6/6 设为设备所有者"
 if [ "${ALREADY:-0}" = "1" ]; then

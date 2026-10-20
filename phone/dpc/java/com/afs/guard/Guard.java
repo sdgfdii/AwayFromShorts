@@ -11,6 +11,7 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.UserManager;
+import android.util.Log;
 
 import java.util.Calendar;
 import java.util.List;
@@ -27,6 +28,12 @@ import java.util.Map;
 public final class Guard {
 
     /* ==================== 可调参数 ==================== */
+
+    /** logcat 标签：adb logcat -s AFS 就能看到闹钟排点/触发 */
+    public static final String TAG = "AFS";
+
+    /** 上次打印过的闹钟时刻（守护服务每 30s 重排，避免日志刷屏） */
+    private static long lastLoggedAt = -1L;
 
     /** 默认管哪些包 —— 用户没在「添加应用」里改过就用这个 */
     public static final String[] DEFAULT_TARGETS = new String[] {
@@ -331,28 +338,78 @@ public final class Guard {
 
     /* ==================== 定时 ==================== */
 
-    /** 只在边界时刻各响一次 + 15 分钟 JobScheduler 兜底，不搞每分钟轮询。 */
+    /**
+     * 保证常驻守护在跑。
+     *
+     * ColorOS 的待机分组会把 AlarmManager 的闹钟整体往后推（实测被推 2 天 23 小时），
+     * 光靠闹钟"到点自动生效"在这台机器上不成立 —— 前台服务是唯一稳定的节拍源。
+     */
+    public static void ensureService(Context ctx) {
+        try {
+            Intent i = new Intent(ctx, GuardService.class);
+            if (Build.VERSION.SDK_INT >= 26) {
+                ctx.startForegroundService(i);
+            } else {
+                ctx.startService(i);
+            }
+            Log.i(TAG, "ensureService ok");
+        } catch (Throwable t) {
+            Log.e(TAG, "ensureService failed: " + t);
+        }
+    }
+
+    /**
+     * 排闹钟 + 15 分钟 JobScheduler 兜底。
+     *
+     * ★ 双路排点，两个 PendingIntent 都指向 AlarmReceiver（apply 是幂等的）：
+     *   1) setAlarmClock —— 系统闹钟级，ColorOS 的 OplusAlarmAdjustment 一般不压
+     *   2) setExactAndAllowWhileIdle —— Doze 里也允许唤醒（每分钟最多一次）
+     * 只排一路不够：实测闹钟被子系统的待机策略整体推迟（adjustment 加了 2 天 23 小时），
+     * 前台服务的 30 秒 tick 在休眠时也不跑（Doze 冻结主线程定时器）。两路 + Job 一起上。
+     */
     public static void schedule(Context ctx) {
         AlarmManager am = (AlarmManager) ctx.getSystemService(Context.ALARM_SERVICE);
         if (am != null) {
-            PendingIntent pi = alarms(ctx);
             long at = nextFlipMillis(ctx);
-            try {
-                // ★ 用 setAlarmClock：它是系统闹钟级，ColorOS 的 OplusAlarmAdjustment
-                // 不敢批处理它，窗口恒为 0。setExactAndAllowWhileIdle 实测被拉成 1 小时窗口，
-                // 边界会晚整整一小时才触发，放行时段等于白给。
-                if (Build.VERSION.SDK_INT >= 21) {
-                    am.setAlarmClock(new AlarmManager.AlarmClockInfo(at, pi), pi);
-                } else if (Build.VERSION.SDK_INT >= 23) {
-                    am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi);
-                } else {
-                    am.setExact(AlarmManager.RTC_WAKEUP, at, pi);
-                }
-            } catch (Throwable t) {
+            PendingIntent piClock = alarms(ctx, ALARM_REQ);
+            PendingIntent piIdle = alarms(ctx, ALARM_REQ + 1);
+            // Android 12+ 精确闹钟受 appop 控制：没授权时 setAlarmClock 直接抛 SecurityException，
+            // 以前这里 catch 掉就静默失败 —— 结果闹钟永远不存在，只有手动打开 App 才冻得上。
+            boolean exact = true;
+            if (Build.VERSION.SDK_INT >= 31) {
                 try {
-                    am.set(AlarmManager.RTC_WAKEUP, at, pi);
+                    exact = am.canScheduleExactAlarms();
                 } catch (Throwable ignored) {
                 }
+            }
+            boolean okClock = false;
+            boolean okIdle = false;
+            try {
+                if (exact) {
+                    am.setAlarmClock(new AlarmManager.AlarmClockInfo(at, piClock), piClock);
+                    okClock = true;
+                } else {
+                    am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, piClock);
+                    okClock = true;
+                }
+            } catch (Throwable t) {
+                Log.e(TAG, "setAlarmClock failed: " + t);
+            }
+            try {
+                am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, piIdle);
+                okIdle = true;
+            } catch (Throwable t) {
+                Log.e(TAG, "setExactAndAllowWhileIdle failed: " + t);
+            }
+            if (!okClock && !okIdle) {
+                try {
+                    am.set(AlarmManager.RTC_WAKEUP, at, piClock);
+                } catch (Throwable ignored) {
+                }
+            }
+            if (at != lastLoggedAt) {   // 守护服务每 30s 会重排一次，别刷屏
+                lastLoggedAt = at;
+                Log.i(TAG, "alarm armed at " + at + " (clock=" + okClock + " idle=" + okIdle + ")");
             }
         }
 
@@ -376,10 +433,10 @@ public final class Guard {
         }
     }
 
-    private static PendingIntent alarms(Context ctx) {
+    private static PendingIntent alarms(Context ctx, int req) {
         Intent i = new Intent(ctx, AlarmReceiver.class);
         return PendingIntent.getBroadcast(
-                ctx, ALARM_REQ, i,
+                ctx, req, i,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
     }
 
