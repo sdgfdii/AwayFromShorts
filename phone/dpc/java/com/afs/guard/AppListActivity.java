@@ -28,6 +28,8 @@ import java.util.Set;
  *
  * 单独一页是必须的 —— 主界面塞满卡片之后，应用一多就得一直往下滑，
  * 而这里本来就是"黑名单"，平时不需要看，需要时才进来改。
+ *
+ * 配色跟首页一致：全部应用都在屏蔽中时整页切深色，有应用放行时切回浅色。
  */
 public class AppListActivity extends Activity {
 
@@ -42,6 +44,24 @@ public class AppListActivity extends Activity {
     private static final int GREEN = 0xFF20A162;
     private static final int LINE = 0xFFE3E5E7;
 
+    // 全部屏蔽时整页切深色（跟首页同一套）
+    private static final int BG_DARK      = 0xFF0D0D0F;
+    private static final int SURFACE_DARK  = 0xFF1A1A1D;
+    private static final int TEXT_DARK     = 0xFFEDEDEF;
+    private static final int TEXT2_DARK    = 0xFF9B9BA2;
+    private static final int OFF_DARK      = 0xFF2A2A2E;
+    private static final int OFF_LIGHT     = 0xFFE3E5E7;
+    private static final int RED_DARK      = 0xFFFF7B72;
+    private static final int GREEN_DARK    = 0xFF3DDC84;
+
+    /** 每一行的句柄，tick 只更新状态文字，不整页重建（保住滚动位置）。 */
+    private static final class Row {
+        String pkg;
+        LinearLayout box;
+        TextView name;
+        TextView state;
+    }
+
     private ScrollView scroll;
     private LinearLayout list;
     private TextView title;
@@ -51,7 +71,20 @@ public class AppListActivity extends Activity {
     private Button pkgBtn;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
+    private final java.util.List<Row> rows = new ArrayList<>();
+    private final java.util.List<View> surfaces = new ArrayList<>();
     private final java.util.List<TextView> labels = new ArrayList<>();
+
+    private boolean darkState = false;
+    private boolean themeApplied = false;
+
+    private final Runnable tick = new Runnable() {
+        @Override
+        public void run() {
+            refreshStates();
+            handler.postDelayed(this, 1000);
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -102,7 +135,6 @@ public class AppListActivity extends Activity {
         addBtn.setBackgroundColor(SURFACE);
         addBtn.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
-                // 按钮本来就该是灰的，这里再挡一道
                 if (!canAdd()) {
                     toast("全部应用都在屏蔽中，等某一应用进入自己的放行时段再加");
                     return;
@@ -137,14 +169,6 @@ public class AppListActivity extends Activity {
         root.addView(pkgBtn, plp);
 
         setContentView(scroll);
-        // 这页固定浅色，状态栏跟着走，否则顶部会留一条系统灰
-        try {
-            getWindow().setStatusBarColor(BG);
-            View v = getWindow().getDecorView();
-            v.setSystemUiVisibility(v.getSystemUiVisibility()
-                    | View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
-        } catch (Throwable ignored) {
-        }
         rebuild();
     }
 
@@ -152,6 +176,14 @@ public class AppListActivity extends Activity {
     protected void onResume() {
         super.onResume();
         rebuild();
+        handler.removeCallbacks(tick);
+        handler.post(tick);
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        handler.removeCallbacks(tick);
     }
 
     @Override
@@ -191,46 +223,31 @@ public class AppListActivity extends Activity {
     /* ==================== 列表 ==================== */
 
     private void rebuild() {
+        applyDark(Guard.allBlocked(this));
+        surfaces.clear();
+        rows.clear();
+        labels.clear();   // hint/empty 的颜色在 refreshStates 里单独刷，不会漏
+
         list.removeAllViews();
         Map<String, Rule> all = RuleStore.all(this);
         empty.setVisibility(all.isEmpty() ? View.VISIBLE : View.GONE);
 
         for (Map.Entry<String, Rule> e : all.entrySet()) {
-            list.addView(makeRow(e.getKey(), e.getValue()));
+            Row r = makeRow(e.getKey());
+            rows.add(r);
+            list.addView(r.box);
         }
-
-        boolean can = canAdd();
-        addBtn.setEnabled(can);
-        addBtn.setTextColor(can ? BRAND : 0xFF9A9AA0);
-        addBtn.setBackgroundColor(can ? SURFACE : LINE);
-        addBtn.setAlpha(can ? 1f : 0.55f);
-        pkgBtn.setEnabled(can);
-        pkgBtn.setTextColor(can ? TEXT2 : 0xFF9A9AA0);
-        pkgBtn.setBackgroundColor(can ? SURFACE : LINE);
-        pkgBtn.setAlpha(can ? 1f : 0.55f);
-        hint.setText(can
-                ? "点一行改它的放行时段，长按从黑名单移除。"
-                : "全部应用都在屏蔽中：黑名单现在改不了，等某一应用进入自己的放行时段。");
+        refreshStates();
     }
 
-    /**
-     * 能不能改黑名单（加应用）。
-     *
-     * 全部应用都在屏蔽中时不给加 —— 跟"这一页现在改不了"保持一致，
-     * 否则界面上写着锁着、下面却有个能点的按钮，很荒唐。
-     *
-     * 唯一例外：黑名单是空的。空列表里没有任何窗口，不给加就永远加不回来（直接死锁）。
-     */
-    private boolean canAdd() {
-        return Config.inGrace(this) || Guard.anyUnlocked(this) || RuleStore.count(this) == 0;
-    }
+    private Row makeRow(final String pkg) {
+        Row r = new Row();
+        r.pkg = pkg;
 
-    private View makeRow(final String pkg, Rule rule) {
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setBackgroundColor(SURFACE);
-        row.setPadding(dp(14), dp(10), dp(14), dp(10));
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.HORIZONTAL);
+        box.setGravity(Gravity.CENTER_VERTICAL);
+        box.setPadding(dp(14), dp(10), dp(14), dp(10));
 
         LinearLayout left = new LinearLayout(this);
         left.setOrientation(LinearLayout.VERTICAL);
@@ -238,56 +255,126 @@ public class AppListActivity extends Activity {
         String label = Guard.labelOf(getPackageManager(), pkg);
         boolean installed = !label.equals(pkg);
 
-        TextView name = new TextView(this);
-        name.setText(label);
-        name.setTextSize(15);
-        name.setSingleLine(true);
-        name.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        name.setTextColor(TEXT);
-        left.addView(name);
+        r.name = new TextView(this);
+        r.name.setText(label);
+        r.name.setTextSize(15);
+        r.name.setSingleLine(true);
+        r.name.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        left.addView(r.name);
 
         TextView sub = new TextView(this);
-        sub.setText(rule.summary());
+        sub.setText(RuleStore.get(this, pkg).summary());
         sub.setTextSize(12);
         sub.setTextColor(TEXT2);
         sub.setPadding(0, dp(2), 0, 0);
+        labels.add(sub);
         left.addView(sub);
 
-        row.addView(left, new LinearLayout.LayoutParams(0,
+        box.addView(left, new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
-        TextView state = new TextView(this);
-        state.setTextSize(12);
-        if (!installed) {
-            state.setText("未安装");
-            state.setTextColor(TEXT2);
-        } else if (Guard.blockedNow(this, pkg)) {
-            state.setText("冻结中");
-            state.setTextColor(RED);
-        } else {
-            state.setText("放行中");
-            state.setTextColor(GREEN);
-        }
-        state.setPadding(dp(8), 0, 0, 0);
-        row.addView(state);
+        r.state = new TextView(this);
+        r.state.setTextSize(12);
+        r.state.setPadding(dp(8), 0, 0, 0);
+        box.addView(r.state);
 
-        row.setOnClickListener(new View.OnClickListener() {
+        r.box = box;
+
+        box.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 edit(pkg);
             }
         });
-        row.setOnLongClickListener(new View.OnLongClickListener() {
+        box.setOnLongClickListener(new View.OnLongClickListener() {
             public boolean onLongClick(View v) {
                 confirmRemove(pkg);
                 return true;
             }
         });
+        return r;
+    }
 
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.bottomMargin = dp(1);
-        row.setLayoutParams(lp);
-        return row;
+    /* ==================== 主题与状态刷新 ==================== */
+
+    private boolean canAdd() {
+        return Config.inGrace(this) || Guard.anyUnlocked(this) || RuleStore.count(this) == 0;
+    }
+
+    /** 每秒跑：换主题色 + 刷每行状态 + 刷按钮可用性。 */
+    private void refreshStates() {
+        boolean dark = Guard.allBlocked(this);
+        applyDark(dark);
+
+        int text2 = dark ? TEXT2_DARK : TEXT2;
+        int red = dark ? RED_DARK : RED;
+        int green = dark ? GREEN_DARK : GREEN;
+        int surface = dark ? SURFACE_DARK : SURFACE;
+
+        boolean installed, blocked;
+        for (Row r : rows) {
+            String label = Guard.labelOf(getPackageManager(), r.pkg);
+            installed = !label.equals(r.pkg);
+            blocked = Guard.blockedNow(this, r.pkg);
+
+            r.name.setText(label);
+            r.name.setTextColor(dark ? TEXT_DARK : TEXT);
+            if (!installed) {
+                r.state.setText("未安装");
+                r.state.setTextColor(text2);
+            } else if (blocked) {
+                r.state.setText("冻结中");
+                r.state.setTextColor(red);
+            } else {
+                r.state.setText("放行中");
+                r.state.setTextColor(green);
+            }
+            r.box.setBackgroundColor(surface);
+        }
+
+        boolean can = canAdd();
+        addBtn.setEnabled(can);
+        addBtn.setTextColor(can ? BRAND : 0xFF9A9AA0);
+        addBtn.setBackgroundColor(can ? surface : (dark ? OFF_DARK : OFF_LIGHT));
+        addBtn.setAlpha(can ? 1f : 0.55f);
+        pkgBtn.setEnabled(can);
+        pkgBtn.setTextColor(can ? text2 : 0xFF9A9AA0);
+        pkgBtn.setBackgroundColor(can ? surface : (dark ? OFF_DARK : OFF_LIGHT));
+        pkgBtn.setAlpha(can ? 1f : 0.55f);
+
+        hint.setText(can
+                ? "点一行改它的放行时段，长按从黑名单移除。"
+                : "全部应用都在屏蔽中：黑名单现在改不了，等某一应用进入自己的放行时段。");
+        hint.setTextColor(text2);
+        empty.setTextColor(text2);
+    }
+
+    private void applyDark(boolean d) {
+        // 每秒跑一次，颜色没变就别重设，免得闪烁
+        if (themeApplied && d == darkState) {
+            return;
+        }
+        themeApplied = true;
+        darkState = d;
+        scroll.setBackgroundColor(d ? BG_DARK : BG);
+        try {
+            getWindow().setStatusBarColor(d ? BG_DARK : BG);
+            View v = getWindow().getDecorView();
+            int flags = v.getSystemUiVisibility();
+            if (d) {
+                flags &= ~View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+            } else {
+                flags |= View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+            }
+            v.setSystemUiVisibility(flags);
+        } catch (Throwable ignored) {
+        }
+        title.setTextColor(d ? TEXT_DARK : TEXT);
+        for (View v : surfaces) {
+            v.setBackgroundColor(d ? SURFACE_DARK : SURFACE);
+        }
+        for (TextView v : labels) {
+            v.setTextColor(d ? TEXT2_DARK : TEXT2);
+        }
     }
 
     /* ==================== 编辑一个应用的时段 ==================== */
@@ -406,7 +493,7 @@ public class AppListActivity extends Activity {
                     del.setOnClickListener(new View.OnClickListener() {
                         public void onClick(View v) {
                             wins.remove(idx);
-                            run();
+                            self.run();
                         }
                     });
                     LinearLayout.LayoutParams dlp2 = new LinearLayout.LayoutParams(dp(56), dp(38));
@@ -514,25 +601,6 @@ public class AppListActivity extends Activity {
         }, defStart / 60, defStart % 60, true).show();
     }
 
-    private void confirmRemove(final String pkg) {
-        if (!Guard.canRemove(this, pkg)) {
-            toast("它正在屏蔽中，等它的放行时段才能移除");
-            return;
-        }
-        new AlertDialog.Builder(this)
-                .setTitle("移出黑名单")
-                .setMessage(Guard.labelOf(getPackageManager(), pkg) + " 将不再被管理（立刻解冻）。")
-                .setPositiveButton("移除", new DialogInterface.OnClickListener() {
-                    public void onClick(DialogInterface d, int which) {
-                        RuleStore.remove(AppListActivity.this, pkg);
-                        rebuild();
-                        applyInBackground();
-                    }
-                })
-                .setNegativeButton("取消", null)
-                .show();
-    }
-
     /** 手动输入包名 —— 主要给"还没装"的应用用，装上后自动被管。 */
     private void promptPackage() {
         final android.widget.EditText input = new android.widget.EditText(this);
@@ -561,6 +629,25 @@ public class AppListActivity extends Activity {
                             return;
                         }
                         RuleStore.put(AppListActivity.this, pkg, RuleStore.defaultRule(AppListActivity.this));
+                        rebuild();
+                        applyInBackground();
+                    }
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    private void confirmRemove(final String pkg) {
+        if (!Guard.canRemove(this, pkg)) {
+            toast("它正在屏蔽中，等它的放行时段才能移除");
+            return;
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("移出黑名单")
+                .setMessage(Guard.labelOf(getPackageManager(), pkg) + " 将不再被管理（立刻解冻）。")
+                .setPositiveButton("移除", new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface d, int which) {
+                        RuleStore.remove(AppListActivity.this, pkg);
                         rebuild();
                         applyInBackground();
                     }
