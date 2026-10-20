@@ -37,7 +37,7 @@ App 本身，只能在系统层面把 App 冻住。
 | 目录 | 做法 | 强度 | 前提 |
 | --- | --- | --- | --- |
 | [`phone/dpc`](phone/dpc/) | **Device Owner** 到点冻结 App | ✅ **真的锁死**：恢复出厂按钮变灰、强停和卸载都点不动、安全模式进不去、改系统时间也拦 | 需要恢复出厂一次（[可行性自查](phone/dpc/COMPATIBILITY.md)） |
-| [`phone/blocker`](phone/blocker/) | 无障碍服务把 App 踢回桌面 + Shizuku 强杀进程 | ⚠️ 中：能拦，但你随时能在设置里关掉 | 装完即用 |
+| [`phone/blocker`](phone/blocker/) | 无障碍服务把 App 踢回桌面（Shizuku 强杀进程为可选强化，非必需） | ⚠️ 中：能拦，但你随时能在设置里关掉 | 装完即用 |
 
 <img src="docs/screenshots/demo.gif" width="300" alt="演示：放行 → 到点冻结 → 打开被系统拦">
 
@@ -78,7 +78,7 @@ cd phone/dpc && bash uninstall.sh
 
 **最简单: 下载单文件 EXE,双击,点一下 UAC「是」,完事。** 不需要解压、不需要命令行:
 
-- 到 [Releases](https://github.com/sdgfdii/AwayFromShorts/releases) 下载 `AwayFromShorts-Setup-1.3.3.exe`
+- 到 [Releases](https://github.com/sdgfdii/AwayFromShorts/releases/latest) 下载 `AwayFromShorts-Setup-1.5.1.exe`
 - 双击运行 → 弹 UAC 请求管理员权限 → 自动: 解压内置包 → 安装到 `%LOCALAPPDATA%\AwayFromShorts` → 备份 hosts → 注册计划任务(每分钟,最高权限,**不登录也运行**)→ **设置开机自启**(登录自动启动面板,不闪窗口)→ 立即执行一次 → 打开配置面板
 - 完成弹窗提示安装成功,浏览器自动打开 **http://127.0.0.1:8737**
 
@@ -94,7 +94,7 @@ irm https://raw.githubusercontent.com/sdgfdii/AwayFromShorts/main/install.ps1 | 
 
 ## 🖥 使用
 
-安装后浏览器会自动打开 **http://127.0.0.1:8737** 。安装时已设置**开机自启**: 注册 `AwayFromShorts-WebUI` 计划任务(最高权限 + 登录触发),每次登录 Windows 面板自动以管理员启动——**不再弹 UAC**,无需每次确认;检测到已运行则跳过。手动重新打开面板: 运行 `%LOCALAPPDATA%\AwayFromShorts\start-web.bat`。手动重新打开面板: 运行 `%LOCALAPPDATA%\AwayFromShorts\start-web.bat`。
+安装后浏览器会自动打开 **http://127.0.0.1:8737** 。安装时已设置**开机自启**: 注册 `AwayFromShorts-WebUI` 计划任务(最高权限 + 登录触发),每次登录 Windows 面板自动以管理员启动——**不再弹 UAC**,无需每次确认;检测到已运行则跳过。手动重新打开面板: 运行 `%LOCALAPPDATA%\AwayFromShorts\start-web.bat`。
 
 面板里可以:
 
@@ -178,8 +178,8 @@ AwayFromShorts/
 ├── src/
     ├── core.ps1           # 核心函数: 配置/计划/hosts/进程/浏览器窗口
     ├── awayfromshorts.ps1 # 屏蔽引擎(计划任务每分钟跑)
-    ├── close-browser-windows.ps1
-- close-browser.vbs: 隐藏启动器(通过 wscript 运行关闭脚本, 不闪控制台窗口) # 关闭匹配的浏览器窗口(交互会话执行, 不杀进程)
+    ├── close-browser-windows.ps1 # 关闭匹配的浏览器窗口(交互会话执行, 不杀进程)
+    ├── close-browser.vbs  # 隐藏启动器(wscript 运行上面的脚本, 不闪控制台窗口)
     ├── register-task.ps1  # 注册计划任务(S4U: 不登录也运行, 最高权限)
     ├── webui.ps1          # 本地配置面板服务器
     ├── uninstall.ps1      # 卸载逻辑
@@ -191,7 +191,7 @@ AwayFromShorts/
 │   │   ├── uninstall.sh       # 唯一逃生口
 │   │   ├── build.sh           # 手工构建，不用 Gradle
 │   │   ├── COMPATIBILITY.md   # 跨机型可行性
-│   │   ├── test/run.sh        # 离线回归（45 项，不用手机）
+│   │   ├── test/run.sh        # 离线回归（63 项，不用手机）
 │   │   └── java/com/afs/guard/
 │   ├── blocker/           # 无障碍版（无需 DO）
 │   │   ├── build.sh
