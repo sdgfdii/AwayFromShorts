@@ -138,12 +138,15 @@ public final class Guard {
     }
 
     /**
-     * 能不能把它移出列表。
-     * ★ 只认"此刻真的在它的放行窗口里"，不吃刚加的宽限 ——
-     * 否则"加进来 → 趁宽限删掉"就是一条绕过路径。
+     * 能不能把它移出黑名单。
+     *
+     * ★ 黑名单是「只进不出」的：已列的应用永远不能移除——否则"放行时段里
+     * 先移出、再趁重新加入时把时段改宽"就是一条绕过路径。
+     * 唯一例外：刚加进来 10 分钟内（typo 逃生口，包名输错还能删）；
+     * 首次安装的全局宽限同样保留（初始配置阶段）。
      */
     public static boolean canRemove(Context ctx, String pkg) {
-        return Config.inGrace(ctx) || inWindowNow(ctx, pkg);
+        return Config.inGrace(ctx) || RuleStore.isFresh(ctx, pkg);
     }
 
     /** 有没有应用正处在放行窗口（决定强制模式能不能关）。 */

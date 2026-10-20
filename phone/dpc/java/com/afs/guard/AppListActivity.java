@@ -29,7 +29,7 @@ import java.util.Set;
  * 单独一页是必须的 —— 主界面塞满卡片之后，应用一多就得一直往下滑，
  * 而这里本来就是"黑名单"，平时不需要看，需要时才进来改。
  *
- * 配色跟首页一致：全部应用都在屏蔽中时整页切深色，有应用放行时切回浅色。
+ * 配色：黑名单页固定深色（用户要求），不跟随屏蔽状态切换。
  */
 public class AppListActivity extends Activity {
 
@@ -214,7 +214,7 @@ public class AppListActivity extends Activity {
             }
         }
         if (refused > 0) {
-            toast(refused + " 个应用正在屏蔽中，不能移出黑名单");
+            toast(refused + " 个应用加入已超过 10 分钟，按「只进不出」不能移出黑名单");
         }
         rebuild();
         applyInBackground();
@@ -297,8 +297,13 @@ public class AppListActivity extends Activity {
 
     /* ==================== 主题与状态刷新 ==================== */
 
+    /**
+     * 能不能加应用 —— 「只进不出」：**随时都可以加**，哪怕全部应用都在屏蔽中。
+     * （旧版在这里设锁，结果空列表/屏蔽中想加应用都得干等；加入本身不构成绕过：
+     * 新应用默认沿用上次的时段，当场就会按规则冻结。）
+     */
     private boolean canAdd() {
-        return Config.inGrace(this) || Guard.anyUnlocked(this) || RuleStore.count(this) == 0;
+        return true;
     }
 
     /** 每秒跑：刷每行状态 + 刷按钮可用性。主题固定深色。 */
@@ -342,9 +347,7 @@ public class AppListActivity extends Activity {
         pkgBtn.setBackgroundColor(can ? surface : (dark ? OFF_DARK : OFF_LIGHT));
         pkgBtn.setAlpha(can ? 1f : 0.55f);
 
-        hint.setText(can
-                ? "点一行改它的放行时段，长按从黑名单移除。"
-                : "全部应用都在屏蔽中：黑名单现在改不了，等某一应用进入自己的放行时段。");
+        hint.setText("点一行改它的放行时段。只进不出：加入后不能移出（刚加的 10 分钟内除外）。");
         hint.setTextColor(text2);
         empty.setTextColor(text2);
     }
@@ -547,7 +550,7 @@ public class AppListActivity extends Activity {
                 .setNeutralButton("移除", new DialogInterface.OnClickListener() {
                     public void onClick(DialogInterface d, int which) {
                         if (!Guard.canRemove(AppListActivity.this, pkg)) {
-                            toast("它正在屏蔽中，等它的放行时段才能移除");
+                            toast("只进不出：已加入的应用不能移出黑名单（刚加的 10 分钟内除外）");
                             return;
                         }
                         RuleStore.remove(AppListActivity.this, pkg);
@@ -640,7 +643,7 @@ public class AppListActivity extends Activity {
 
     private void confirmRemove(final String pkg) {
         if (!Guard.canRemove(this, pkg)) {
-            toast("它正在屏蔽中，等它的放行时段才能移除");
+            toast("只进不出：已加入的应用不能移出黑名单（刚加的 10 分钟内除外）");
             return;
         }
         new AlertDialog.Builder(this)
