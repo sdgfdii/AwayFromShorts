@@ -27,6 +27,9 @@
 | 🖥 可视化面板 | 本地网页 (127.0.0.1) 配置一切,改完最长 1 分钟生效 |
 | 🧹 一键卸载 | 删除计划任务、恢复 hosts、清理文件,不留痕迹 |
 
+> 📌 **版本线**:PC 端走 **2.x**(`v2.0.0` 起),手机端走 **1.x**(`v1.7.0` 等)。
+> 两边共用同一个 git tag 命名空间,所以 PC 端不再使用 1.x 版本号 —— 看到 1.x 的 Release 都是手机端。
+
 ## 📱 手机端（Android）
 
 上面这些是**电脑**上的。手机上要做到"真的刷不了"是另一回事——手机上没有任何"网站屏蔽"能拦住抖音
@@ -78,7 +81,7 @@ cd phone/dpc && bash uninstall.sh
 
 **最简单: 下载单文件 EXE,双击,点一下 UAC「是」,完事。** 不需要解压、不需要命令行:
 
-- 到 [Releases](https://github.com/sdgfdii/AwayFromShorts/releases/latest) 下载 `AwayFromShorts-Setup-1.5.1.exe`
+- 到 [Releases](https://github.com/sdgfdii/AwayFromShorts/releases/latest) 下载 `AwayFromShorts-Setup-2.0.0.exe`
 - 双击运行 → 弹 UAC 请求管理员权限 → 自动: 解压内置包 → 安装到 `%LOCALAPPDATA%\AwayFromShorts` → 备份 hosts → 注册计划任务(每分钟,最高权限,**不登录也运行**)→ **设置开机自启**(登录自动启动面板,不闪窗口)→ 立即执行一次 → 打开配置面板
 - 完成弹窗提示安装成功,浏览器自动打开 **http://127.0.0.1:8737**
 
