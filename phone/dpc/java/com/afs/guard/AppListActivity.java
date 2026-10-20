@@ -223,7 +223,7 @@ public class AppListActivity extends Activity {
     /* ==================== 列表 ==================== */
 
     private void rebuild() {
-        applyDark(Guard.allBlocked(this));
+        applyDark(true);   // 黑名单页固定深色，不跟随屏蔽状态
         surfaces.clear();
         rows.clear();
         labels.clear();   // hint/empty 的颜色在 refreshStates 里单独刷，不会漏
@@ -279,6 +279,7 @@ public class AppListActivity extends Activity {
         box.addView(r.state);
 
         r.box = box;
+        box.setBackgroundColor(SURFACE_DARK);   // 固定深色：首帧就别露白底
 
         box.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
@@ -300,9 +301,9 @@ public class AppListActivity extends Activity {
         return Config.inGrace(this) || Guard.anyUnlocked(this) || RuleStore.count(this) == 0;
     }
 
-    /** 每秒跑：换主题色 + 刷每行状态 + 刷按钮可用性。 */
+    /** 每秒跑：刷每行状态 + 刷按钮可用性。主题固定深色。 */
     private void refreshStates() {
-        boolean dark = Guard.allBlocked(this);
+        boolean dark = true;   // 黑名单页固定深色
         applyDark(dark);
 
         int text2 = dark ? TEXT2_DARK : TEXT2;
