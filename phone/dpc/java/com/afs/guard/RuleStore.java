@@ -25,7 +25,8 @@ public final class RuleStore {
     private static final String K_LAST = "last_rule";
 
     /** 新加的应用默认用这个：每天 21:00–23:00。 */
-    public static final Rule FALLBACK = new Rule(Rule.ALL_DAYS, 21 * 60, 23 * 60);
+    public static final int FALLBACK_START = 21 * 60;
+    public static final int FALLBACK_END = 23 * 60;
 
     /**
      * 新加应用后的可编辑窗口。
@@ -59,9 +60,7 @@ public final class RuleStore {
                 if (r == null) {
                     continue;
                 }
-                m.put(pkg, new Rule(r.optInt("d", Rule.ALL_DAYS),
-                        r.optInt("s", FALLBACK.start),
-                        r.optInt("e", FALLBACK.end)));
+                m.put(pkg, parseRule(r));
             }
         } catch (Throwable ignored) {
         }
@@ -87,11 +86,11 @@ public final class RuleStore {
         String raw = sp(c).getString(K_LAST, "");
         try {
             JSONObject o = new JSONObject(raw);
-            return new Rule(o.optInt("d", FALLBACK.days),
-                    o.optInt("s", FALLBACK.start),
-                    o.optInt("e", FALLBACK.end));
+            return new Rule(o.optInt("d", Rule.ALL_DAYS),
+                    o.optInt("s", FALLBACK_START),
+                    o.optInt("e", FALLBACK_END));
         } catch (Throwable ignored) {
-            return FALLBACK;
+            return new Rule(Rule.ALL_DAYS, FALLBACK_START, FALLBACK_END);
         }
     }
 
@@ -139,6 +138,31 @@ public final class RuleStore {
         return at > 0L && System.currentTimeMillis() - at < NEW_GRACE_MS;
     }
 
+    /** 解析一条规则：v2 是 w=[[s,e],...]，v1 是 s/e 单段（老用户升级自动迁移）。 */
+    private static Rule parseRule(JSONObject r) {
+        int days = r.optInt("d", Rule.ALL_DAYS);
+        org.json.JSONArray w = r.optJSONArray("w");
+        if (w != null && w.length() > 0) {
+            int[][] wins = new int[w.length()][2];
+            int n = 0;
+            for (int i = 0; i < w.length(); i++) {
+                org.json.JSONArray seg = w.optJSONArray(i);
+                if (seg != null && seg.length() >= 2) {
+                    wins[n][0] = seg.optInt(0);
+                    wins[n][1] = seg.optInt(1);
+                    n++;
+                }
+            }
+            if (n > 0) {
+                int[][] trimmed = new int[n][2];
+                System.arraycopy(wins, 0, trimmed, 0, n);
+                return new Rule(days, trimmed);
+            }
+            return new Rule(days, new int[0][2]);   // 显式清空 = 整天冻结
+        }
+        return new Rule(days, r.optInt("s", FALLBACK_START), r.optInt("e", FALLBACK_END));
+    }
+
     private static JSONObject raw(Context c) {
         String s = sp(c).getString(K_RULES, "");
         try {
@@ -161,8 +185,14 @@ public final class RuleStore {
             for (Map.Entry<String, Rule> e : m.entrySet()) {
                 JSONObject r = new JSONObject();
                 r.put("d", e.getValue().days);
-                r.put("s", e.getValue().start);
-                r.put("e", e.getValue().end);
+                org.json.JSONArray w = new org.json.JSONArray();
+                for (int i = 0; i < e.getValue().windowCount(); i++) {
+                    org.json.JSONArray seg = new org.json.JSONArray();
+                    seg.put(e.getValue().startAt(i));
+                    seg.put(e.getValue().endAt(i));
+                    w.put(seg);
+                }
+                r.put("w", w);
                 // 新加应用的时间戳要留着，否则每次改时段都会重新给一次宽限
                 JSONObject prev = old.optJSONObject(e.getKey());
                 if (prev != null && prev.has("at")) {
@@ -179,8 +209,14 @@ public final class RuleStore {
         try {
             JSONObject o = new JSONObject();
             o.put("d", r.days);
-            o.put("s", r.start);
-            o.put("e", r.end);
+            org.json.JSONArray w = new org.json.JSONArray();
+            for (int i = 0; i < r.windowCount(); i++) {
+                org.json.JSONArray seg = new org.json.JSONArray();
+                seg.put(r.startAt(i));
+                seg.put(r.endAt(i));
+                w.put(seg);
+            }
+            o.put("w", w);
             sp(c).edit().putString(K_LAST, o.toString()).apply();
         } catch (Throwable ignored) {
         }
@@ -210,8 +246,8 @@ public final class RuleStore {
             return;
         }
         int d = p.getInt("days", Rule.ALL_DAYS);
-        int s = p.getInt("start_min", FALLBACK.start);
-        int e = p.getInt("end_min", FALLBACK.end);
+        int s = p.getInt("start_min", FALLBACK_START);
+        int e = p.getInt("end_min", FALLBACK_END);
         Rule r = new Rule(d, s, e);
 
         Set<String> old = p.getStringSet("targets", null);

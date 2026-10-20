@@ -332,7 +332,7 @@ public class AppListActivity extends Activity {
                         days[k].setTextColor(on ? 0xFFFFFFFF : TEXT2);
                         days[k].setBackgroundColor(on ? BRAND : LINE);
                     }
-                    daysText.setText(Rule.daysText(mask[0]));
+                    daysText.setText("放行星期 " + Rule.daysText(mask[0]));
                 }
             });
             boolean on = Rule.dayOn(mask[0], i);
@@ -345,73 +345,112 @@ public class AppListActivity extends Activity {
         }
         box.addView(dayRow, dlp);
 
-        final int[] win = { cur.start, cur.end };
+        // ---- 多段时段 ----
+        final java.util.List<int[]> wins = new java.util.ArrayList<int[]>();
+        for (int i = 0; i < cur.windowCount(); i++) {
+            wins.add(new int[] { cur.startAt(i), cur.endAt(i) });
+        }
         final TextView winText = new TextView(this);
         winText.setTextSize(13);
         winText.setTextColor(TEXT);
-        winText.setPadding(0, dp(14), 0, dp(6));
-        winText.setText("放行时段　" + Rule.hm(win[0] / 60, win[0] % 60)
-                + " - " + Rule.hm(win[1] / 60, win[1] % 60));
+        winText.setPadding(0, dp(14), 0, dp(4));
         box.addView(winText);
 
-        LinearLayout timeRow = new LinearLayout(this);
-        timeRow.setOrientation(LinearLayout.HORIZONTAL);
-        Button startBtn = new Button(this);
-        startBtn.setText("改起点");
-        startBtn.setAllCaps(false);
-        startBtn.setTextSize(13);
-        startBtn.setBackgroundColor(LINE);
-        startBtn.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) {
-                new TimePickerDialog(AppListActivity.this, new TimePickerDialog.OnTimeSetListener() {
-                    public void onTimeSet(TimePicker view, int h, int m) {
-                        win[0] = h * 60 + m;
-                        if (win[0] == win[1]) {
-                            toast("起点和终点不能相同");
-                            return;
-                        }
-                        winText.setText("放行时段　" + Rule.hm(win[0] / 60, win[0] % 60)
-                                + " - " + Rule.hm(win[1] / 60, win[1] % 60));
-                    }
-                }, win[0] / 60, win[0] % 60, true).show();
-            }
-        });
-        LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(0, dp(42), 1f);
-        blp.rightMargin = dp(6);
-        timeRow.addView(startBtn, blp);
+        final LinearLayout winBox = new LinearLayout(this);
+        winBox.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams wlp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        wlp.topMargin = dp(4);
+        box.addView(winBox, wlp);
 
-        Button endBtn = new Button(this);
-        endBtn.setText("改终点");
-        endBtn.setAllCaps(false);
-        endBtn.setTextSize(13);
-        endBtn.setBackgroundColor(LINE);
-        endBtn.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) {
-                new TimePickerDialog(AppListActivity.this, new TimePickerDialog.OnTimeSetListener() {
-                    public void onTimeSet(TimePicker view, int h, int m) {
-                        win[1] = h * 60 + m;
-                        if (win[0] == win[1]) {
-                            toast("起点和终点不能相同");
-                            return;
+        final class Refresher implements Runnable {
+            public void run() {
+                final Refresher self = Refresher.this;
+                winBox.removeAllViews();
+                if (wins.isEmpty()) {
+                    TextView none = new TextView(AppListActivity.this);
+                    none.setText("没有任何时段 = 整天冻结");
+                    none.setTextSize(12);
+                    none.setTextColor(TEXT2);
+                    winBox.addView(none);
+                }
+                for (int i = 0; i < wins.size(); i++) {
+                    final int idx = i;
+                    LinearLayout row = new LinearLayout(AppListActivity.this);
+                    row.setOrientation(LinearLayout.HORIZONTAL);
+                    row.setGravity(Gravity.CENTER_VERTICAL);
+                    TextView tv = new TextView(AppListActivity.this);
+                    tv.setText((i + 1) + ".　" + Rule.hm(wins.get(i)[0] / 60, wins.get(i)[0] % 60)
+                            + " - " + Rule.hm(wins.get(i)[1] / 60, wins.get(i)[1] % 60));
+                    tv.setTextSize(14);
+                    tv.setTextColor(TEXT);
+                    row.addView(tv, new LinearLayout.LayoutParams(0,
+                            ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+                    Button chg = new Button(AppListActivity.this);
+                    chg.setText("改");
+                    chg.setTextSize(12);
+                    chg.setAllCaps(false);
+                    chg.setOnClickListener(new View.OnClickListener() {
+                        public void onClick(View v) {
+                            pickWindow(wins, idx, new Runnable() { public void run() {
+                                winText.setText("放行时段　" + joinWins(wins));
+                                self.run();
+                            } });
                         }
-                        winText.setText("放行时段　" + Rule.hm(win[0] / 60, win[0] % 60)
-                                + " - " + Rule.hm(win[1] / 60, win[1] % 60));
+                    });
+                    row.addView(chg, new LinearLayout.LayoutParams(dp(56), dp(38)));
+                    Button del = new Button(AppListActivity.this);
+                    del.setText("删");
+                    del.setTextSize(12);
+                    del.setAllCaps(false);
+                    del.setOnClickListener(new View.OnClickListener() {
+                        public void onClick(View v) {
+                            wins.remove(idx);
+                            run();
+                        }
+                    });
+                    LinearLayout.LayoutParams dlp2 = new LinearLayout.LayoutParams(dp(56), dp(38));
+                    dlp2.leftMargin = dp(4);
+                    row.addView(del, dlp2);
+                    winBox.addView(row, new LinearLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+                }
+                Button add = new Button(AppListActivity.this);
+                add.setText("＋ 加一段");
+                add.setTextSize(12);
+                add.setAllCaps(false);
+                add.setOnClickListener(new View.OnClickListener() {
+                    public void onClick(View v) {
+                        pickWindow(wins, -1, new Runnable() { public void run() {
+                            winText.setText("放行时段　" + joinWins(wins));
+                            self.run();
+                        } });
                     }
-                }, win[1] / 60, win[1] % 60, true).show();
+                });
+                LinearLayout.LayoutParams alp2 = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, dp(38));
+                alp2.topMargin = dp(6);
+                winBox.addView(add, alp2);
+                winText.setText("放行时段　" + joinWins(wins));
             }
-        });
-        timeRow.addView(endBtn, new LinearLayout.LayoutParams(0, dp(42), 1f));
-        box.addView(timeRow);
+        }
+        Refresher refresher = new Refresher();
+        refresher.run();
 
         new AlertDialog.Builder(this)
                 .setTitle(Guard.labelOf(getPackageManager(), pkg))
                 .setView(box)
                 .setPositiveButton("保存", new DialogInterface.OnClickListener() {
                     public void onClick(DialogInterface d, int which) {
+                        int[][] w = new int[wins.size()][2];
+                        for (int i = 0; i < wins.size(); i++) {
+                            w[i][0] = wins.get(i)[0];
+                            w[i][1] = wins.get(i)[1];
+                        }
                         if (mask[0] == 0) {
                             toast("一天都没选 = 整天冻结，已保存");
                         }
-                        RuleStore.put(AppListActivity.this, pkg, new Rule(mask[0], win[0], win[1]));
+                        RuleStore.put(AppListActivity.this, pkg, new Rule(mask[0], w));
                         rebuild();
                         applyInBackground();
                     }
@@ -429,6 +468,50 @@ public class AppListActivity extends Activity {
                     }
                 })
                 .show();
+    }
+
+    /** 时段列表拼成一行文案。 */
+    private static String joinWins(java.util.List<int[]> wins) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < wins.size(); i++) {
+            if (i > 0) {
+                sb.append('、');
+            }
+            sb.append(Rule.hm(wins.get(i)[0] / 60, wins.get(i)[0] % 60))
+              .append('-')
+              .append(Rule.hm(wins.get(i)[1] / 60, wins.get(i)[1] % 60));
+        }
+        return sb.length() == 0 ? "无" : sb.toString();
+    }
+
+    /**
+     * 选一段起止时间：先弹起点再弹终点，确认后写回。
+     * idx >= 0 是改第 idx 段；-1 是追加新段。
+     */
+    private void pickWindow(final java.util.List<int[]> wins, final int idx, final Runnable done) {
+        int defStart = idx >= 0 ? wins.get(idx)[0] : 21 * 60;
+        new TimePickerDialog(this, new TimePickerDialog.OnTimeSetListener() {
+            public void onTimeSet(TimePicker view, int h, int m) {
+                final int s = h * 60 + m;
+                int defEnd = idx >= 0 ? wins.get(idx)[1] : 23 * 60;
+                new TimePickerDialog(AppListActivity.this, new TimePickerDialog.OnTimeSetListener() {
+                    public void onTimeSet(TimePicker view, int h2, int m2) {
+                        int e = h2 * 60 + m2;
+                        if (s == e) {
+                            toast("起点和终点不能相同");
+                            return;
+                        }
+                        int[] seg = { s, e };
+                        if (idx >= 0) {
+                            wins.set(idx, seg);
+                        } else {
+                            wins.add(seg);
+                        }
+                        done.run();
+                    }
+                }, defEnd / 60, defEnd % 60, true).show();
+            }
+        }, defStart / 60, defStart % 60, true).show();
     }
 
     private void confirmRemove(final String pkg) {

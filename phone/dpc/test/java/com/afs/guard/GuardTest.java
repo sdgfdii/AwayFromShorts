@@ -21,6 +21,7 @@ public final class GuardTest {
         onlyMonday();
         weekendOnly();
         multiApp();
+        twoWindows();
         textTests();
 
         System.out.println();
@@ -138,6 +139,64 @@ public final class GuardTest {
         ok(none > noon().getTimeInMillis(), "没有应用时也要给出未来的时刻");
     }
 
+    /* ---------- 6.5 一个应用两段时段 ---------- */
+
+    private static void twoWindows() {
+        System.out.println("---- 一个应用两段时段（12:00-13:00 + 21:00-23:00）----");
+        // 故意把 21:00 段写在前，验证 normalize 会按 start 升序重排
+        Rule r = new Rule(0x7F, new int[][] { { 21 * 60, 23 * 60 }, { 12 * 60, 13 * 60 } });
+
+        eq(r.windowCount(), 2, "两段都在");
+        eq(r.startAt(0), 12 * 60, "段0 = 12:00（已按起点排序）");
+        eq(r.startAt(1), 21 * 60, "段1 = 21:00");
+
+        eq(blocked(r, 2026, 10, 19, 12, 30), false, "12:30 放行（第一段）");
+        eq(blocked(r, 2026, 10, 19, 14, 0), true, "14:00 屏蔽（两段之间）");
+        eq(blocked(r, 2026, 10, 19, 21, 30), false, "21:30 放行（第二段）");
+        eq(blocked(r, 2026, 10, 19, 11, 0), true, "11:00 屏蔽");
+
+        int allowMin = 0;
+        for (int m = 0; m < 1440; m++) {
+            if (r.inWindow(at(2026, 10, 19, m / 60, m % 60))) {
+                allowMin++;
+            }
+        }
+        eq(allowMin, 180, "两段合计放行 180 分钟（60 + 120）");
+
+        Calendar f = cal(r.nextFlip(at(2026, 10, 19, 14, 0)));
+        eq(Rule.hm(f.get(Calendar.HOUR_OF_DAY), f.get(Calendar.MINUTE)), "21:00",
+                "14:00 的下次翻转是当晚 21:00（跳过中间的空档）");
+
+        Calendar f2 = cal(r.nextFlip(at(2026, 10, 19, 22, 0)));
+        eq(Rule.hm(f2.get(Calendar.HOUR_OF_DAY), f2.get(Calendar.MINUTE)), "23:00",
+                "22:00 的下次翻转是 23:00");
+
+        Calendar f3 = cal(r.nextFlip(at(2026, 10, 19, 23, 30)));
+        eq(Rule.hm(f3.get(Calendar.HOUR_OF_DAY), f3.get(Calendar.MINUTE)), "12:00",
+                "23:30 的下次翻转是次日 12:00");
+        eq(f3.get(Calendar.DAY_OF_MONTH), 20, "确实是明天");
+
+        flipProperty(r);
+
+        // 增删段不可变 + 文案
+        Rule a = r.addWindow(7 * 60, 8 * 60);
+        eq(a.windowCount(), 3, "addWindow 后三段");
+        eq(r.windowCount(), 2, "原规则不被 addWindow 改动");
+        Rule b = a.removeWindow(0);
+        eq(b.startAt(0), 12 * 60, "removeWindow(0) 删掉的是 07:00 段（按 start 排序后）");
+        Rule c = r.withWindow(1, 22 * 60, 23 * 60);
+        eq(c.startAt(1), 22 * 60, "withWindow 改第二段起点");
+        eq(r.startAt(1), 21 * 60, "原规则不被 withWindow 改动");
+        ok(r.windowText().contains("12:00-13:00") && r.windowText().contains("21:00-23:00"),
+                "windowText 两段都列出");
+
+        // 空时段 = 整天冻结
+        Rule none = new Rule(0x7F, new int[0][2]);
+        eq(none.windowCount(), 0, "空时段");
+        eq(blocked(none, 2026, 10, 19, 12, 30), true, "空时段 = 任何时刻都屏蔽");
+        ok(none.windowText().contains("整天冻结"), "空时段文案要说明白");
+    }
+
     /* ---------- 7. 文案 ---------- */
 
     private static void textTests() {
@@ -148,7 +207,7 @@ public final class GuardTest {
         eq(Rule.daysText(0x41), "周一、周日", "0x41 → 周一、周日");
         ok(Rule.daysText(0).contains("一天都没选"), "0 → 提示一天都没选");
         eq(Rule.hm(22, 0), "22:00", "hm 格式化");
-        eq(new Rule(0x7F, 23 * 60, 20 * 60).summary(), "每天 23:00-20:00（跨午夜）",
+        eq(new Rule(0x7F, 23 * 60, 20 * 60).summary(), "每天 23:00-20:00（含跨午夜）",
                 "跨午夜要在文案里标出来");
     }
 
