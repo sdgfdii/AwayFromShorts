@@ -68,8 +68,8 @@ echo "[2/6] aapt2 link"
   --java "$OUT/gen" \
   --min-sdk-version 24 \
   --target-sdk-version 34 \
-  --version-code 1700 \
-  --version-name 1.7.0 \
+  --version-code 1800 \
+  --version-name 1.8.0 \
   "$OUT"/flat/*.flat
 
 # ---------- 3. 编译 Java ----------

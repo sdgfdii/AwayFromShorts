@@ -42,6 +42,10 @@ App 本身，只能在系统层面把 App 冻住。
 | [`phone/dpc`](phone/dpc/) | **Device Owner** 到点冻结 App | ✅ **真的锁死**：恢复出厂按钮变灰、强停和卸载都点不动、安全模式进不去、改系统时间也拦 | 需要恢复出厂一次（[可行性自查](phone/dpc/COMPATIBILITY.md)） |
 | [`phone/blocker`](phone/blocker/) | 无障碍服务把 App 踢回桌面（Shizuku 强杀进程为可选强化，非必需） | ⚠️ 中：能拦，但你随时能在设置里关掉 | 装完即用 |
 
+> 🔋 **手机端会持续耗电**:为了让"到点自动冻结/放行"真的准时,app 常驻前台服务 + 持一把
+> Partial Wakelock(灭屏时 CPU 不睡),还会把自己加进 Doze 白名单。这是拿电量换准时 ——
+> 不放行的话,ColorOS 会把闹钟整体推后好几天,到点根本不动。
+
 <img src="docs/screenshots/demo.gif" width="300" alt="演示：放行 → 到点冻结 → 打开被系统拦">
 
 <img src="docs/screenshots/01-light.png" width="210" alt="放行中">

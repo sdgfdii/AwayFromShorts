@@ -134,6 +134,22 @@ else
   warn "闹钟没排上：请手动打开一次 App"
 fi
 
+# Doze 白名单：GuardService 里的常驻 wakelock 只能挡住"灭屏 CPU 休眠"，
+# 挡不住系统级 Doze —— 两个一起上才稳。加进白名单会持久化，重启也在。
+"$ADB" shell "dumpsys deviceidle whitelist +$PKG" >/dev/null 2>&1
+if "$ADB" shell "dumpsys deviceidle whitelist" 2>/dev/null | grep -q "$PKG"; then
+  ok "已在 Doze 白名单（灭屏不会被整体冻结）"
+else
+  warn "没能加入 Doze 白名单，灭屏后可能被冻结"
+fi
+
+# 常驻 wakelock 是 v1.8.0 才有的，这里确认它真的持上了
+if "$ADB" shell "dumpsys power" 2>/dev/null | grep -q "afs:guard"; then
+  ok "常驻 wakelock 已持有（30s 节拍不会停）"
+else
+  warn "wakelock 没持上：确认 APK 是 1.8.0+，服务在跑（dumpsys power | grep afs:guard）"
+fi
+
 # ---------- 6. 设为设备所有者 ----------
 say "6/6 设为设备所有者"
 if [ "${ALREADY:-0}" = "1" ]; then

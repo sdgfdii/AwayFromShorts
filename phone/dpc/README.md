@@ -207,26 +207,20 @@ Success: Device owner set to package ComponentInfo{com.afs.guard/com.afs.guard.A
                                   解冻            再冻结
 ```
 
-- **只在两个边界时刻各响一次**（20:00 / 23:00），不是每分钟轮询 → 不费电
-- 外加 `JobScheduler` 每 15 分钟兜底一次，防止闹钟被系统掐掉
+- 每个应用按**自己的星期 + 多段时段**判，`Guard.apply()` 只在状态真的变了才调 `setPackagesSuspended`
+- 闹钟只排**所有应用里最早的那个**翻转时刻；外加 `JobScheduler` 每 15 分钟兜底
+- **前台服务 30 秒 tick 才是主力节拍**：ColorOS 会把闹钟整体推后（实测 `adjustment=+2d23h58m`，
+  连支付宝的闹钟一样被推），只靠闹钟会晚好几天
+- **常驻 Partial Wakelock**（`afs:guard`，v1.8.0 起）：灭屏后 CPU 不睡，30 秒 tick 才跑得准。
+  **代价是持续耗电** —— 拿电量换准时，服务活着就一直持着这把锁，没有超时
+- Doze 白名单一起上（`deploy.sh` 会自动加）：wakelock 挡不住系统级 Doze，两个缺一不可
 - 开机 / 重装后自动重新落一遍
 - 冻结态是**持久的**：即使进程被杀，抖音也打不开
 
-改时段：编辑 `java/com/afs/guard/Guard.java` 顶部四个常量，然后
+改时段：**在手机 App 里改** —— 首页「黑名单 · N 个应用」→ 点某个应用 → 改星期 / 加减时间段。
+规则存在 App 私有目录（`RuleStore`），不写死在代码里，改完立刻 `apply()`，不用重编译。
 
-```bash
-cd phone/dpc && bash build.sh
-"$ADB" install -r ../afs-guard.apk
-```
-
-```java
-public static final int ALLOW_START_H = 20;
-public static final int ALLOW_START_M = 0;
-public static final int ALLOW_END_H   = 23;
-public static final int ALLOW_END_M   = 0;
-```
-
-跨午夜也支持，比如 `START_H=23, END_H=20` 就是每晚 23:00 到第二天 20:00 放行。
+跨午夜也支持，比如 `23:00 - 20:00` 就是每晚 23:00 到第二天 20:00 放行。
 
 ---
 
@@ -245,13 +239,18 @@ public static final int ALLOW_END_M   = 0;
 
 ## 6. 管哪几个包
 
+**在 App 里选**，不是写死的。首次安装预置抖音三件套：
+
 ```
 com.ss.android.ugc.aweme        抖音
 com.ss.android.ugc.aweme.lite   抖音极速版
 com.ss.android.ugc.live         抖音火山版
 ```
 
-**三个都管**。只写一个等于没管 —— 极速版和火山版是独立安装包。
+黑名单页可以点「+ 添加应用」从已安装应用里挑，也可以直接输包名（没装的先加进去，装上就生效）。
+**抖音三个包要全加** —— 极速版和火山版是独立安装包，只加一个等于没加。
+
+黑名单**只进不出**：加进去随时可以，移出去只在「刚加 10 分钟内」或首次宽限期内允许。
 
 ---
 
