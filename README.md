@@ -27,7 +27,7 @@
 | 🖥 可视化面板 | 本地网页 (127.0.0.1) 配置一切,改完最长 1 分钟生效 |
 | 🧹 一键卸载 | 删除计划任务、恢复 hosts、清理文件,不留痕迹 |
 
-> 📌 **PC 端版本走 2.x**(`v2.0.0` 起)。手机端在另一个仓库:[AwayFromShorts-Phone](https://github.com/sdgfdii/AwayFromShorts-Phone)。
+> 📌 本仓库是 **Windows 端**,版本走 2.x(`v2.0.0` 起)。
 
 ## 📱 手机端（Android）
 
