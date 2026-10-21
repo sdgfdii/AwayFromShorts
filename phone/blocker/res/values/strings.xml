@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string name="app_name">AFS 守卫</string>
-    <string name="pick_title">选择要管的应用</string>
-    <string name="acc_desc">屏蔽时段内把选中的 App 踢回桌面。只在 App 切到前台时读取包名，不读取屏幕内容，不联网。</string>
-</resources>

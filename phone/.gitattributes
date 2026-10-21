@@ -1,2 +1,0 @@
-# 这些脚本要给 Termux 跑，必须 LF。Windows 上 checkout 别转成 CRLF。
-*.sh text eol=lf

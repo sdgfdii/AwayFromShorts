@@ -27,59 +27,22 @@
 | 🖥 可视化面板 | 本地网页 (127.0.0.1) 配置一切,改完最长 1 分钟生效 |
 | 🧹 一键卸载 | 删除计划任务、恢复 hosts、清理文件,不留痕迹 |
 
-> 📌 **版本线**:PC 端走 **2.x**(`v2.0.0` 起),手机端走 **1.x**(`v1.7.0` 等)。
-> 两边共用同一个 git tag 命名空间,所以 PC 端不再使用 1.x 版本号 —— 看到 1.x 的 Release 都是手机端。
+> 📌 **PC 端版本走 2.x**(`v2.0.0` 起)。手机端在另一个仓库:[AwayFromShorts-Phone](https://github.com/sdgfdii/AwayFromShorts-Phone)。
 
 ## 📱 手机端（Android）
 
-上面这些是**电脑**上的。手机上要做到"真的刷不了"是另一回事——手机上没有任何"网站屏蔽"能拦住抖音
-App 本身，只能在系统层面把 App 冻住。
+手机上没有任何"网站屏蔽"能拦住抖音 App 本身 —— hosts / DNS 对原生 App 基本无效,
+只有在系统层面把 App 冻住才行。这部分已经拆成独立仓库:
 
-`phone/` 里有两个独立实现，任选：
+**[sdgfdii/AwayFromShorts-Phone](https://github.com/sdgfdii/AwayFromShorts-Phone)**
 
-| 目录 | 做法 | 强度 | 前提 |
-| --- | --- | --- | --- |
-| [`phone/dpc`](phone/dpc/) | **Device Owner** 到点冻结 App | ✅ **真的锁死**：恢复出厂按钮变灰、强停和卸载都点不动、安全模式进不去、改系统时间也拦 | 需要恢复出厂一次（[可行性自查](phone/dpc/COMPATIBILITY.md)） |
-| [`phone/blocker`](phone/blocker/) | 无障碍服务把 App 踢回桌面（Shizuku 强杀进程为可选强化，非必需） | ⚠️ 中：能拦，但你随时能在设置里关掉 | 装完即用 |
+- **Device Owner 版**:到点系统级冻结,图标变灰、强停和卸载点不动、安全模式进不去、改系统时间也没用
+- **无障碍版**:一进前台就送回桌面,装完即用,但用户能在设置里关掉
+- 每个应用有自己的星期和多段时段,黑名单只进不出
 
-> 🔋 **手机端会持续耗电**:为了让"到点自动冻结/放行"真的准时,app 常驻前台服务 + 持一把
-> Partial Wakelock(灭屏时 CPU 不睡),还会把自己加进 Doze 白名单。这是拿电量换准时 ——
-> 不放行的话,ColorOS 会把闹钟整体推后好几天,到点根本不动。
+> 🔋 手机端会持续耗电 —— 常驻前台服务 + Partial Wakelock,拿电量换准时。
 
-<img src="docs/screenshots/demo.gif" width="300" alt="演示：放行 → 到点冻结 → 打开被系统拦">
-
-<img src="docs/screenshots/01-light.png" width="210" alt="放行中">
-<img src="docs/screenshots/04-blocked.png" width="210" alt="屏蔽中（整页变黑）">
-<img src="docs/screenshots/02-list.png" width="210" alt="黑名单">
-<img src="docs/screenshots/03-edit.png" width="210" alt="改某个应用的时段">
-
-首页只看状态，**应用列表单独一页**：一行一个，点开改那条规则。应用再多也不用在首页往下滑。
-
-屏蔽时段整页变黑、所有控件禁用；放行时段切回浅色可编辑。
-GIF 第三个画面是点开抖音时的系统弹窗 —— 不是 App 自己弹的，是 Android 的
-`ActionDisabledByAdminDialog`，App 自己一行代码都没参与。
-
-**每个应用可以有自己的时段**：抖音只给 21:00–23:00，微信给 07:00–22:00，B 站只给周末。
-各条规则互不影响，锁定也是按应用算的——某个 App 正在自己的屏蔽时间里，就不能改它、不能移出黑名单。
-
-不想自己编，直接下 APK：[Releases](https://github.com/sdgfdii/AwayFromShorts/releases/latest)
-
-一条命令部署（连上手机、开 USB 调试即可）：
-
-```bash
-cd phone/dpc
-bash deploy.sh
-```
-
-脚本会先自检三个硬条件（无账号、单用户、无已有 Owner），不满足会直接告诉你卡在哪、
-怎么解。装不上的机器，先看 [`COMPATIBILITY.md`](phone/dpc/COMPATIBILITY.md)——
-90% 的情况是"应用分身"留下的第二个用户，跟机型无关。
-
-拆掉它只有一条路：
-
-```bash
-cd phone/dpc && bash uninstall.sh
-```
+部署:`cd dpc && bash deploy.sh`(前提、要避的坑、逃生口都在那边 README 里)。
 
 ## 🚀 Windows 一键安装(推荐)
 
@@ -192,22 +155,10 @@ AwayFromShorts/
     ├── uninstall.ps1      # 卸载逻辑
     ├── config.example.json
     └── web/index.html     # 面板前端(单文件,零依赖)
-├── phone/                 # 手机端
-│   ├── dpc/               # Device Owner 版（真锁死）
-│   │   ├── deploy.sh          # 一键部署（自带前提自检）
-│   │   ├── uninstall.sh       # 唯一逃生口
-│   │   ├── build.sh           # 手工构建，不用 Gradle
-│   │   ├── COMPATIBILITY.md   # 跨机型可行性
-│   │   ├── test/run.sh        # 离线回归（63 项，不用手机）
-│   │   └── java/com/afs/guard/
-│   ├── blocker/           # 无障碍版（无需 DO）
-│   │   ├── build.sh
-│   │   ├── README.md
-│   │   └── test/run.sh
-│   ├── afs-guard.apk      # DO 版产物
-│   └── afs-blocker.apk    # 无障碍版产物
 └── tools/                 # 前端 / 样式离线校验
 ```
+
+手机端(Android)不在这个仓库 —— 见 [AwayFromShorts-Phone](https://github.com/sdgfdii/AwayFromShorts-Phone)。
 
 ## ❓ 常见问题
 

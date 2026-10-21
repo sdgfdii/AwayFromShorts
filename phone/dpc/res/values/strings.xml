@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string name="app_name">AwayFromShorts</string>
-    <string name="pick_title">选择要冻结的应用</string>
-    <string name="list_title">黑名单与时段</string>
-</resources>

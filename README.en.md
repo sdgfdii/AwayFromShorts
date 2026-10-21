@@ -5,113 +5,15 @@
 [![Release](https://img.shields.io/github/v/release/sdgfdii/AwayFromShorts?label=release)](https://github.com/sdgfdii/AwayFromShorts/releases/latest)
 [![License](https://img.shields.io/github/license/sdgfdii/AwayFromShorts)](LICENSE)
 
-[中文说明](README.md) · [Download APK](https://github.com/sdgfdii/AwayFromShorts/releases/latest)
+[中文说明](README.md) · **Android 端在另一个仓库: [AwayFromShorts-Phone](https://github.com/sdgfdii/AwayFromShorts-Phone)**
 
 ---
 
-## Two halves, two platforms
+This repository is the **Windows** side: hosts-level site blocking, process killing, browser-window
+closing, and a local web panel. Pure PowerShell, zero dependencies.
 
-| | Windows | Android |
-| --- | --- | --- |
-| What it does | Blocks short-video **websites** (hosts) and **programs** (process kill) on a weekly schedule | **Freezes the apps** at the OS level, so they cannot be opened at all |
-| How strong | Medium — you're the admin of your own PC | **Hard lock**: factory reset is greyed out, force-stop and uninstall are blocked, safe mode and clock changes are disabled |
-| Where | `src/` — PowerShell + a single-file local web panel, zero dependencies | `phone/dpc/` — Device Owner app, no Gradle needed |
-| Requires | Windows 7/10/11 | Android 7.0+, and **one factory reset** |
-
-There is also a lighter Android option in `phone/blocker/` (Accessibility Service, no reset needed, but you can turn it off yourself).
-
----
-
-## Android: the hard-lock version
-
-<img src="docs/screenshots/demo.gif" width="300" alt="demo: allowed → auto-freeze at schedule → launch blocked by the system">
-
-<img src="docs/screenshots/04-blocked.png" width="260" alt="blocked state">
-<img src="docs/screenshots/01-light.png" width="260" alt="allowed state">
-<img src="docs/screenshots/02-list.png" width="260" alt="blacklist">
-<img src="docs/screenshots/03-edit.png" width="260" alt="per-app schedule editor">
-
-The home screen is status only. The app list lives on its own screen — one row per app,
-tap a row to edit that app's schedule. No endless scrolling as the list grows.
-
-Blocked state: the whole UI goes dark, every control is disabled.
-Allowed state: light theme, settings editable.
-
-The third frame of the GIF is what you see when you tap the frozen app: that dialog is
-Android's own `ActionDisabledByAdminDialog`, not something the app draws — the app isn't
-even running at that point.
-
-**Each app has its own schedule.** Douyin only 21:00–23:00, WeChat 07:00–22:00, Bilibili
-weekends only. The rules are independent, and locking is per-app: while an app is inside
-its own blocked window you can't edit it or remove it from the list.
-
-### Why Device Owner
-
-Android gives exactly one way to make an app truly unopenable: `DevicePolicyManager.setPackagesSuspended()`.
-That API is only available to a **Device Owner** — a special app that owns the device's management policy.
-
-Getting Device Owner requires a device with **no accounts and a single user**, then:
-
-```bash
-adb shell dpm set-device-owner com.afs.guard/.AfsAdmin
-```
-
-The catch: most phones fail this check because of a *second user* created by OEM "app cloning" /
-"private space" / "work profile" features. Once created, these users usually cannot be removed —
-a factory reset is the only reliable fix. Details in [COMPATIBILITY.md](phone/dpc/COMPATIBILITY.md).
-
-### Install
-
-```bash
-# 1. Factory reset. In the setup wizard, DO NOT use "phone clone / data migration" —
-#    it restores the clone profile and you'll be back to square one.
-
-# 2. Enable USB debugging, plug in the cable.
-
-# 3. Run:
-git clone https://github.com/sdgfdii/AwayFromShorts.git
-cd AwayFromShorts/phone/dpc
-bash deploy.sh
-```
-
-`deploy.sh` checks every precondition first and tells you exactly what's wrong if it fails:
-
-```
-1/6 device connected?          → adb state, Android version
-2/6 already deployed?          → if yes, just update the APK
-3/6 only one user?             → lists what creates extra users on your ROM
-4/6 no accounts?               → prints them (yes, an app account counts — Douyin registers one)
-5/6 install APK                → push + pm install
-6/6 set Device Owner           → verify
-```
-
-On first launch you get a **10-minute grace window** to configure weekdays, the allowed time window,
-and which apps to freeze. After you press "Apply", settings lock until the next allowed window.
-
-### Remove it
-
-There is exactly one way out. That's the point.
-
-```bash
-cd phone/dpc && bash uninstall.sh
-```
-
-### What it configures
-
-- **Allowed weekdays** (multi-select) and **allowed time window**, e.g. Mon–Fri 21:00–23:00
-- Outside that window: selected apps are frozen, the UI is locked and turns dark
-- **Forced mode**: a switch (no duration). While on, apps stay frozen even during the allowed window.
-  It cannot be turned off during blocked hours — only inside the allowed window
-- Hardening: `DISALLOW_FACTORY_RESET`, `DISALLOW_SAFE_BOOT`, `DISALLOW_APPS_CONTROL`,
-  `DISALLOW_CONFIG_DATE_TIME`
-
-### Test without a phone
-
-```bash
-cd phone/dpc && bash test/run.sh     # 38 assertions, pure Java, no device
-```
-
-Covers weekday masks, cross-midnight windows, exact flip points and forced-mode semantics.
+The **Android** side (Device Owner freeze / accessibility blocker) lives in a separate repo:
+**[sdgfdii/AwayFromShorts-Phone](https://github.com/sdgfdii/AwayFromShorts-Phone)**.
 
 ---
 
@@ -121,9 +23,63 @@ Covers weekday masks, cross-midnight windows, exact flip points and forced-mode 
 irm https://raw.githubusercontent.com/sdgfdii/AwayFromShorts/main/install.ps1 | iex
 ```
 
-hosts-level site blocking, process killing, browser-window closing, a local web panel at
-`http://127.0.0.1:8737`, and a log of every time you overrode it. See the [Chinese README](README.md)
-for details (the panel UI is Chinese-only).
+Or grab `AwayFromShorts-Setup-2.0.0.exe` from
+[Releases](https://github.com/sdgfdii/AwayFromShorts/releases/latest), double-click, click "Yes" on the
+UAC prompt. It unpacks to `%LOCALAPPDATA%\AwayFromShorts`, backs up hosts, registers a scheduled task
+(every minute, highest privileges, runs without login), enables auto-start, and opens the panel at
+**http://127.0.0.1:8737**.
+
+The panel UI is Chinese-only.
+
+### What it does
+
+| | |
+|---|---|
+| **Weekly schedule** | Pick weekdays and one or more time windows (cross-midnight supported) |
+| **Site blocking** | Writes `0.0.0.0 domain` into hosts — the browser simply can't resolve it |
+| **Process blocking** | `Stop-Process` on matching names, re-checked every minute so restarting doesn't help |
+| **Browser window blocking** | Gracefully closes browser windows whose title matches (e.g. an "Entertainment" workspace), other windows untouched |
+| **Allow-list** | Domains and processes that are never blocked |
+| **Temp override** | "Block 30 min" / "Unblock 30 min", auto-reverts on expiry |
+| **Stats** | Every override is logged (count + duration), plus ActivityWatch-style time-per-app tracking |
+| **Gist sync** | Push/pull the config to a private GitHub Gist; token is DPAPI-encrypted locally |
+
+### Force mode
+
+When enabled it only applies **inside** the scheduled blocking window:
+
+- You cannot disable blocking or temporarily unblock — the API returns 403 and the UI hides the button
+- It **does not auto-renew**: it expires at 24:00 the same day and the engine releases it
+- Outside the window (or on a weekday you didn't select) it does nothing — a switch that's "on" is not
+  necessarily "active right now"
+
+**Uninstall guard**: while force mode is actually active you cannot uninstall — the panel button greys out
+and running `uninstall.bat` directly is refused by the same script, without touching any file
+(scheduled task, hosts, program directory all stay intact). The reverse is also explicit: a switch that's
+on but outside its window does **not** block uninstall.
+
+There's one more anti-tamper check: if `config.json` says force mode is off but a `force-state.json`
+is left behind (the trace of hand-editing the config to sneak out), uninstall is still blocked.
+
+### How it works
+
+```
+config.json ──(scheduled task, every minute, SYSTEM-level)──▶ engine: awayfromshorts.ps1
+     ▲                                                          │ schedule hit?
+     │ save rules                                        ┌──────┴──────┐
+web panel (webui.ps1 @127.0.0.1:8737)                   │ yes: hosts  │  no: clear hosts
+                                                        │  + kill     │
+                                                        └─────────────┘
+```
+
+Config lives at `%LOCALAPPDATA%\AwayFromShorts\src\config.json` — plain JSON, safe to edit by hand
+(hit "Apply now" in the panel afterwards).
+
+### Uninstall
+
+Panel → "About / Uninstall", or run `%LOCALAPPDATA%\AwayFromShorts\uninstall.bat` as administrator.
+It removes the scheduled task, strips only the lines this program wrote from hosts, and deletes the
+program directory.
 
 ---
 

@@ -17,9 +17,5 @@ Thumbs.db
 # 项目内部数据(预览/记忆)
 .workbuddy/
 
-# 安卓构建产物 (APK 本体在 phone/，源码在 phone/dpc 与 phone/blocker)
-phone/dpc/build/
-*.idsig
-phone/blocker/build/
-phone/preview.apk
-phone/demo.apk
+# 个人清单,不进仓库
+reset-apps.txt
